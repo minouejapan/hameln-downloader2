@@ -1,0 +1,147 @@
+object Hameln: THameln
+  Left = 315
+  Height = 81
+  Top = 31
+  Width = 802
+  BorderIcons = [biSystemMenu]
+  BorderStyle = bsSingle
+  Caption = 'ハーメルン小説ダウンローダー '
+  ClientHeight = 81
+  ClientWidth = 802
+  Color = clBtnFace
+  Font.CharSet = SHIFTJIS_CHARSET
+  Font.Color = clBlack
+  Font.Height = -12
+  Font.Name = 'Yu Gothic UI'
+  Font.Pitch = fpVariable
+  Font.Quality = fqDraft
+  KeyPreview = True
+  OnActivate = FormActivate
+  OnClose = FormClose
+  OnCloseQuery = FormCloseQuery
+  OnCreate = FormCreate
+  OnKeyPress = FormKeyPress
+  OnShow = FormShow
+  object Panel1: TPanel
+    Left = 0
+    Height = 2
+    Top = 79
+    Width = 802
+    Align = alClient
+    ClientHeight = 2
+    ClientWidth = 802
+    ParentBackground = False
+    TabOrder = 0
+    object WVWindowParent1: TWVWindowParent
+      Left = 1
+      Height = 0
+      Top = 1
+      Width = 800
+      Align = alClient
+      TabOrder = 0
+      Browser = WV2
+    end
+  end
+  object Panel2: TPanel
+    Left = 0
+    Height = 79
+    Top = 0
+    Width = 802
+    Align = alTop
+    BevelOuter = bvNone
+    ClientHeight = 79
+    ClientWidth = 802
+    ParentBackground = False
+    TabOrder = 1
+    object NvTitle: TLabel
+      Left = 16
+      Height = 15
+      Top = 58
+      Width = 595
+      AutoSize = False
+      Caption = '作品タイトル：'
+      Color = clBtnFace
+      ParentColor = False
+    end
+    object Elapsed: TLabel
+      Left = 516
+      Height = 15
+      Top = 12
+      Width = 87
+      Caption = '経過時間：00:00'
+      Color = clBtnFace
+      ParentColor = False
+    end
+    object Status: TLabel
+      Left = 204
+      Height = 15
+      Top = 11
+      Width = 24
+      Caption = '状態'
+      Color = clBtnFace
+      ParentColor = False
+    end
+    object Label1: TLabel
+      Left = 8
+      Height = 15
+      Top = 12
+      Width = 95
+      Caption = '小説TOPページURL'
+      Color = clBtnFace
+      ParentColor = False
+    end
+    object OCBtn: TSpeedButton
+      Left = 756
+      Height = 22
+      Top = 56
+      Width = 23
+      Caption = '▼'
+      Flat = True
+      OnClick = OCBtnClick
+    end
+    object CancelBtn: TButton
+      Left = 709
+      Height = 25
+      Top = 29
+      Width = 70
+      Caption = '中止(&A)'
+      Enabled = False
+      TabOrder = 0
+      OnClick = CancelBtnClick
+    end
+    object StartBtn: TButton
+      Left = 617
+      Height = 25
+      Top = 29
+      Width = 86
+      Caption = 'ダウンロード(&D)'
+      TabOrder = 1
+      OnClick = StartBtnClick
+    end
+    object URL: TEdit
+      Left = 12
+      Height = 23
+      Top = 29
+      Width = 599
+      TabOrder = 2
+    end
+  end
+  object WV2: TWVBrowser
+    TargetCompatibleBrowserVersion = '104.0.1293.44'
+    AllowSingleSignOnUsingOSPrimaryAccount = False
+    OnInitializationError = WV2InitializationError
+    OnAfterCreated = WV2AfterCreated
+    OnExecuteScriptCompleted = WV2ExecuteScriptCompleted
+    OnNavigationCompleted = WV2NavigationCompleted
+    OnSourceChanged = WV2SourceChanged
+    OnRetrieveHTMLCompleted = WV2RetrieveHTMLCompleted
+    Left = 448
+    Top = 108
+  end
+  object Timer1: TTimer
+    Enabled = False
+    OnTimer = Timer1Timer
+    Left = 188
+    Top = 124
+  end
+end

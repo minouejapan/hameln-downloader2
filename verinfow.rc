@@ -1,0 +1,26 @@
+1 VERSIONINFO
+FILEVERSION 1,2,0,0
+PRODUCTVERSION 1,2,0,0
+FILEOS 0x4
+FILETYPE 0x1
+{
+BLOCK "StringFileInfo"
+{
+	BLOCK "041103A4"
+	{
+    VALUE "Comments", "フリーソフトです"
+    VALUE "CompanyName", ""
+    VALUE "FileDescription", "フリーソフトです"
+		VALUE "FileVersion", "1.2.0.0"
+		VALUE "LegalCopyright", "INOUE, masahiro"
+		VALUE "OriginalFilename", "hamelndlw.exe"
+		VALUE "ProductName", "ハーメルンテキストダウンローダー"
+		VALUE "ProductVersion", "1.2"
+	}
+}
+
+BLOCK "VarFileInfo"
+{
+	VALUE "Translation", 0x0411 0x03A4  
+}
+}
