@@ -36,6 +36,7 @@ WebView4Delphiは https://github.com/salvadordf/WebView4Delphi から取得し�
 
 
 あなたは18歳以上ですか？の質問に対して「はい」をクリックすると対象作品のトップページが開かれますので、hamelndlwウィンドウ右下の▲をクリックしてページを閉じます。
+
 ![hamelndlw1](https://github.com/user-attachments/assets/724d3340-0b28-4d75-a7d0-650d7d84c87f)
 
 
