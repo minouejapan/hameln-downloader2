@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.31     02/08  担保園ではないが１話しかない作品をダウンロード出来なかった不具合を修正した
   1.3 2025/02/08  作者名を取得出来ない場合があった不具合を修正した
                   ログファイルの書式を他の外部ダウンローダーに合わせた
                   実行時引数にURLを指定しても自動実行しなかった不具合を修正した
@@ -489,8 +490,7 @@ end;
 procedure THameln.LoadEachPage;
 var
   i, n, cnt, sc, rt: integer;
-  line, stat, urla,
-  PrevURL, NextURL: string;
+  line, stat, urla: string;
 begin
   cnt := PageList.Count;
   if StartN > 0 then
@@ -510,30 +510,36 @@ begin
     NextURL := '';
     // TEgdeBrowserはNavigate(URL)してもページを更新してくれない場合があるため
     // エピソードページの取得を判定するために前後ページへのリンクURLを保存する
-    if i > 0 then
-      PrevURL := '<a href="./' + IntToStr(n - 1)  + '.html"><< 前の話</a>';
-    if i < cnt then
-      NextURL := '<a href="./' + IntToStr(n + 1) + '.html" class="next_page_link">次の話 >></a>';
+    if cnt > 1 then
+    begin
+      if i > 0 then
+        PrevURL := '<a href="./' + IntToStr(n - 1)  + '.html"><< 前の話</a>';
+      if i < cnt then
+        NextURL := '<a href="./' + IntToStr(n + 1) + '.html" class="next_page_link">次の話 >></a>';
+    end;
     line := GetHTMLSrc(urla, 0);
     rt := 1;
     // 前後ページへのリンクURLがあるかチェックしてない場合は再取得を繰り返す
     // 尚、5回繰り返しても取得出来なければエラーとする
-    while ((i = 0) and (UTF8Pos(NextURL, line) = 0))
-       or ((i > 0) and (UTF8Pos(PrevURL, line) = 0)) do
+    if cnt > 1 then
     begin
-      Status.Caption := 'リトライ中(' + IntToStr(rt) + ')';
-      // リトライを5回行っても駄目だった場合はエラーとする
-      if rt = 5 then
+      while ((i = 0) and (UTF8Pos(NextURL, line) = 0))
+         or ((i > 0) and (UTF8Pos(PrevURL, line) = 0)) do
       begin
-        TextPage.Add('★エラー：リトライ回数超過');
-        line := '';
-        Break;
+        Status.Caption := 'リトライ中(' + IntToStr(rt) + ')';
+        // リトライを5回行っても駄目だった場合はエラーとする
+        if rt = 5 then
+        begin
+          TextPage.Add('★エラー：リトライ回数超過');
+          line := '';
+          Break;
+        end;
+        if Cancel then
+          Break;
+        Inc(rt);
+        Sleep(500);
+        line := GetHTMLSrc(urla, 0);
       end;
-      if Cancel then
-        Break;
-      Inc(rt);
-      Sleep(500);
-      line := GetHTMLSrc(urla, 0);
     end;
 
     if line <> '' then
