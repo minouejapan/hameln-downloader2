@@ -1,6 +1,11 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.3 2025/02/08  作者名を取得出来ない場合があった不具合を修正した
+                  ログファイルの書式を他の外部ダウンローダーに合わせた
+                  実行時引数にURLを指定しても自動実行しなかった不具合を修正した
+                  挿絵URLの抽出処理が甘かった不具合を修正した
+                  短編の処理がおかしかった不具合を修正した
   1.2 2025/02/06  各話タイトルを正しく取得出来ない場合があった不具合を修正した
   1.1 2025/02/01  本文が完全に取得出来ない場合があった不具合を修正した
                   文字コードにエスケープされた文字を戻せない場合があった不具合を修正した
@@ -124,6 +129,7 @@ const
   // トップページ
   STITLE   = '<span .*?itemprop="name">.*?</span>';                                 // タイトル
   SAUTHER  = '<div align="right">作者：<span itemprop="author">.*?</a></span></div>';   // 作者
+  SAUTHER2 = '<div align="right">作者：<span itemprop="author">.*?</span></div>';   // 作者
   SHEADER  = '<div class="ss">.*?<hr.*?></div>';                                    // 前書き部分
   SCONTENT = '<div class="ss">.*?<table .*?>.*?</div>';                             // 目次部分
   SCHAPTER = '<tr><td .*?><strong>.*?</strong></td></tr>';                          // 章(ないこともある)
@@ -132,7 +138,7 @@ const
   // 短編
   SSTITLE  = '<span .*?><a href=\./>.*?</a></span>';                                // タイトル
   SSAUTHER = '作：<a href=".*?">.*?</a>';                                           // 作者
-  SSMAEGAKI= '<div class="ss">.*?<';                                                // 前書き部分
+  SSMAEGAKI= '</div>'#13#10'<div class="ss">.*?<hr';                                // 前書き部分
   SSATOGAKI= '<div id="atogaki">.*?><br>.*?</div>';
   SSSECT   = '<span style="font-size:120%"> .*?</span>';                            // 話
   SSBODY   = '<div id="honbun">.*?</div>';                                          // 短編本文
@@ -144,7 +150,7 @@ const
   SBODY    = '<div id="honbun">.*?</div>';                                          // 本文
   SLINEB   = '<p id=".*?">';                                                        // 行始まり
   SLINEE   = '</p>';                                                                // 行終わり
-  SIMAGE   = '<a href=".*?" alt="挿絵".*?>【挿絵表示】</a>';                        // 挿絵
+  SIMAGE   = '<a href=".*?" alt="挿絵" name="img">.*?</a>';                                               // 挿絵
 
 
 // ユーザメッセージID
@@ -317,7 +323,7 @@ begin
   begin
     str := RegEx.Match[0];
     str := ReplaceRegExpr('<a href="', str, AO_PIB);
-    str := ReplaceRegExpr('" alt="挿絵" name=''img''>【挿絵表示】</a>', str, AO_PIE);
+    str := ReplaceRegExpr('" alt="挿絵" name="img">.*?</a>', str, AO_PIE);
     UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);
     UTF8Insert(str, Base, RegEx.MatchPos[0]);
     RegEx.InputString := Base;
@@ -475,7 +481,6 @@ begin
 
   if body = '' then
   begin
-    //riteln(sect + ' から本文を抽出出来ませんでした.');
     Result := False;
   end;
 end;
@@ -501,6 +506,8 @@ begin
   begin
     urla := PageList.Strings[i];
     URL.Text := urla;
+    PrevURL := '';
+    NextURL := '';
     // TEgdeBrowserはNavigate(URL)してもページを更新してくれない場合があるため
     // エピソードページの取得を判定するために前後ページへのリンクURLを保存する
     if i > 0 then
@@ -564,7 +571,6 @@ begin
     title := ReplaceRegExpr('<span .*?><a href=\./>', title, '');
     title := ReplaceRegExpr('</a></span>', title, '');
     title := ProcTags('【短編】' + title);
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
     // ファイル名を準備する
     if FileName = '' then
       FileName := Path + PathFilter(title) + '.txt';
@@ -583,7 +589,6 @@ begin
     authurl:= ReplaceRegExpr('">.*?</a>', authurl, '');
     if authurl <> '' then
       authurl:= 'https:' + authurl;
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   end;
   // 前書き
   header := '';
@@ -592,10 +597,9 @@ begin
   if RegEx.Exec then
   begin
     header := RegEx.Match[0];
-    header := ReplaceRegExpr('<div class="ss">', header, '');
-    header := ReplaceRegExpr('<', header, '');
+    header := ReplaceRegExpr('</div>'#13#10'<div class="ss">', header, '');
+    header := ReplaceRegExpr('<hr', header, '');
     header := ProcTags(header);
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   end;
   // 話タイトル
   sect := '';
@@ -607,7 +611,6 @@ begin
     sect := ReplaceRegExpr('<span style="font-size:120%">', sect, '');
     sect := ReplaceRegExpr('</span>', sect, '');
     sect := ProcTags(Trim(sect));
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   end;
   // 本文
   body := '';
@@ -624,7 +627,6 @@ begin
     body := ReplaceRegExpr('<p id=".*?">', body, '');  // 各行を整形
     body := ReplaceRegExpr('</p>', body, #13#10);
     body := ProcTags(body);
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   end;
   // 後書き
   footer := '';
@@ -636,7 +638,6 @@ begin
     footer := ReplaceRegExpr('<div id="atogaki">', footer, '');
     footer := ReplaceRegExpr('</div>', footer, '');
     footer := ProcTags(footer);
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   end;
   TextPage.Add(title);
   TextPage.Add(auther);
@@ -652,12 +653,13 @@ begin
     TextPage.Add(AO_KKL + footer + #13#10 + AO_KKR);
   TextPage.Add(AO_PB2);
 
-  LogFile.Add(title);
+  LogFile.Add(URL.Text);
+  LogFile.Add('タイトル：' + title);
   if authurl <> '' then
-    LogFile.Add(auther + '(https:' + authurl + ')')
+    LogFile.Add('作者　　：' + auther + '(https:' + authurl + ')')
   else
-    LogFile.Add(auther);
-  LogFile.Add('');
+    LogFile.Add('作者  ：' + auther);
+  LogFile.Add('あらすじ：');
   LogFile.Add(header);
   LogFile.Add('');
 end;
@@ -716,6 +718,28 @@ begin
           auther := ReplaceRegExpr('<.*?>', auther, '');
         end;
         auther := ProcTags(auther);
+      end else begin
+        RegEx.Expression := SAUTHER2;
+        RegEx.InputString:= MainPage;
+        if RegEx.Exec then
+        begin
+          sp := RegEx.MatchPos[0] + RegEx.MatchLen[0];
+          auther := RegEx.Match[0];
+          // 作者名の前後のタグを除去する
+          auther := ReplaceRegExpr('<div align="right">作者：<span itemprop="author">', auther, '');
+          auther := ReplaceRegExpr('</span></div>', auther, '');
+          UTF8Delete(MainPage, 1, sp - 1);
+          RegEx.InputString := auther;
+          RegEx.Expression  := '<a href=.*?>';
+          if RegEx.Exec then
+          begin
+            authurl := RegEx.Match[0];
+            authurl := ReplaceRegExpr('<a href="', authurl, '');
+            authurl := ReplaceRegExpr('">', authurl, '');
+            auther := ReplaceRegExpr('<.*?>', auther, '');
+          end;
+          auther := ProcTags(auther);
+        end;
       end;
       // 前書き部分
       RegEx.Expression := SHEADER;
@@ -768,14 +792,17 @@ begin
       TextPage.Add(AO_PB2);
       TextPage.Add(AO_KKL + URL.Text + #13#10 + header + #13#10 + AO_KKR);
       TextPage.Add(AO_PB2);
-      LogFile.Add(title);
+
+      LogFile.Add(URL.Text);
+      LogFile.Add('タイトル：' + title);
       if authurl <> '' then
-        LogFile.Add(auther + '(https:' + authurl + ')')
+        LogFile.Add('作者　　：' + auther + '(https:' + authurl + ')')
       else
-        LogFile.Add(auther);
-      LogFile.Add('');
+        LogFile.Add('作者　　：' + auther);
+      LogFile.Add('あらすじ：');
       LogFile.Add(header);
       LogFile.Add('');
+
       // Naro2mobiから呼び出された場合は進捗状況をSendする
       if hWnd <> 0 then
       begin
@@ -1028,9 +1055,9 @@ begin
   if TextBuff <> '' then
   begin
     NvStat := GetNovelStatus(TextBuff);
-    ParseChapter(TextBuff)
+    ParseChapter(TextBuff);
   end;
-  if (TextBuff = '') or (PageList.Count = 0) then
+  if (TextBuff = '') or ((PageList.Count = 0) and (not NShort)) then
   begin
     LogFile.Add('エラー：トップページ情報を取得出来ませんでした.');
     Cancel := True;
@@ -1043,6 +1070,14 @@ begin
     if not NShort then                  // 短編でなければ各話情報を取得
     begin
       LoadEachPage;
+    // 短編を保存する
+    end else begin
+      TextPage.WriteBOM := True;      // DelphiとLazarusでデフォルトの定義が違うため明示的に指定する
+      LogFile.WriteBOM  := True;
+      TextPage.SaveToFile(Filename, TEncoding.UTF8);
+      LogFile.SaveToFile(ChangeFileExt(FileName, '.log'), TEncoding.UTF8);
+      Status.Caption := Status.Caption + '・・完了';
+      Goto Quit;
     end;
     if FileName <> '' then
     begin
@@ -1075,7 +1110,7 @@ end;
 
 procedure THameln.FormActivate(Sender: TObject);
 begin
-  if (URLadr <> '') and (FileName  <> '') then
+  if (URLadr <> '') {and (FileName  <> '')} then
   begin
     while Timer1.Enabled do
       Sleep(100);
@@ -1093,6 +1128,7 @@ begin
   cfg := ChangeFileExt(Application.ExeName, '.cfg');
   try
     AssignFile(f, cfg);
+    opt := '';
     Rewrite(f);
     Writeln(f, opt);
     if not isCalled then
