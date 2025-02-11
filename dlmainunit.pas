@@ -1,7 +1,10 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  1.31     02/08  担保園ではないが１話しかない作品をダウンロード出来なかった不具合を修正した
+  1.32     02/11  タイトルに《》があると青空文庫タグに変換されて見づらくなるため【】に
+                  置換するようにした
+  1.31     02/08  短編ではないが１話しかない作品をダウンロード出来なかった不具合を修正した
+                  Naro2mobiからの呼び出し時に短編のダウンロードが停止する不具合を修正した
   1.3 2025/02/08  作者名を取得出来ない場合があった不具合を修正した
                   ログファイルの書式を他の外部ダウンローダーに合わせた
                   実行時引数にURLを指定しても自動実行しなかった不具合を修正した
@@ -565,7 +568,10 @@ end;
 // 短編専用処理
 procedure THameln.ParseShort(Page: string);
 var
-  title, auther, authurl, header, sect, body, footer: string;
+  title, auther, authurl,
+  sendstr, header, sect,
+  body, footer: string;
+  ws: WideString;
 begin
   title := ''; auther := ''; authurl := '';
   // タイトル
@@ -576,6 +582,8 @@ begin
     title := RegEx.Match[0];
     title := ReplaceRegExpr('<span .*?><a href=\./>', title, '');
     title := ReplaceRegExpr('</a></span>', title, '');
+    title := ReplaceRegExpr('《', title, '【');
+    title := ReplaceRegExpr('》', title, '】');
     title := ProcTags('【短編】' + title);
     // ファイル名を準備する
     if FileName = '' then
@@ -607,6 +615,18 @@ begin
     header := ReplaceRegExpr('<hr', header, '');
     header := ProcTags(header);
   end;
+  // Naro2mobiから呼び出された場合は進捗状況をSendする
+  if hWnd <> 0 then
+  begin
+    sendstr := title + ',' + auther;
+    // 送信する文字列をUTF-16にする
+    ws := UTF8ToUTF16(sendstr);
+    Cds.dwData := PageList.Count - StartN + 1;
+    Cds.cbData := ByteLength(ws) + 2;
+    Cds.lpData := PWideChar(ws);
+    SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
+  end;
+
   // 話タイトル
   sect := '';
   RegEx.Expression  := SSSECT;
@@ -675,7 +695,6 @@ procedure THameln.ParseChapter(MainPage: string);
 var
   sp, sc, sl, pn: integer;
   title, auther, authurl, header, cont, sendstr, aurl: string;
-  conhdl: THandle;
   ws: WideString;
 begin
   title := ''; auther := ''; authurl := ''; header := ''; cont := '';
@@ -683,6 +702,7 @@ begin
   RegEx.Expression  := SSHORT;
   RegEx.InputString := MainPage;
   NShort := RegEx.Exec;
+  // 短編専用処理
   if NShort then
   begin
     ParseShort(MainPage);
@@ -697,6 +717,8 @@ begin
       // タイトルの前後のタグを除去する
       title := ReplaceRegExpr('<span .*?itemprop="name">', title, '');
       title := ReplaceRegExpr('</span>', title, '');
+      title := ReplaceRegExpr('《', title, '【');
+      title := ReplaceRegExpr('》', title, '】');
       title := ProcTags(title);
       UTF8Delete(MainPage, 1, sp - 1);
       NvTitle.Caption := '作品タイトル：' + title;
@@ -812,14 +834,13 @@ begin
       // Naro2mobiから呼び出された場合は進捗状況をSendする
       if hWnd <> 0 then
       begin
-        conhdl := GetStdHandle(STD_OUTPUT_HANDLE);
         sendstr := title + ',' + auther;
         // 送信する文字列をUTF-16にする
         ws := UTF8ToUTF16(sendstr);
         Cds.dwData := PageList.Count - StartN + 1;
         Cds.cbData := ByteLength(ws) + 2;
         Cds.lpData := PWideChar(ws);
-        SendMessage(hWnd, WM_COPYDATA, conhdl, LPARAM(Addr(Cds)));
+        SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
       end;
     end else
       Status.Caption := 'トップページから情報を取得出来ませんでした.';
@@ -1017,8 +1038,9 @@ end;
 procedure THameln.OCBtnClick(Sender: TObject);
 begin
   // 閉じた状態であればブラウザを開く
-  if Height = FmHt then
+  if Height < 200 {= FmHt} then
   begin
+    FmHt := Height;
     Height := 1000;
     if URL.Text = '' then
       WV2.Navigate(NVSITE)
