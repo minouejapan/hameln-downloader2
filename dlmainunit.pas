@@ -1,6 +1,12 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.4 2025/02/12  単体で起動した際に連続で作品をDLすると次の作品にも前のファイル名が使わ
+                  れる不具合を修正した
+                  短編に前書きがある場合抽出されなかった不具合を修正した
+                  実行環境によってはNaro2mobiとのSendMessageハンドシェイクが確立されず、
+                  フリーズしたような状態になるためSendMessageの後にProcessMessageを入れる
+                  ようしにた
   1.32     02/11  タイトルに《》があると青空文庫タグに変換されて見づらくなるため【】に
                   置換するようにした
   1.31     02/08  短編ではないが１話しかない作品をダウンロード出来なかった不具合を修正した
@@ -43,9 +49,12 @@ uses
   uWVBrowserBase, uWVBrowser,uWVWindowParent, uWVTypes, uWVTypeLibrary, uWVLoader;
 
 type
+	TShareMem = record
+    Busy, ProgN, PageN: integer;
+		Data: array[0..2048] of Char;
+	end;
 
   { THameln }
-
   THameln = class(TForm)
     Panel1: TPanel;
     WV2: TWVBrowser;
@@ -127,7 +136,7 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver1.2 2025/2/6';
+  VERSION  = 'ver1.4 2025/2/13';
   NVSITE   = 'https://syosetu.org';
   // データ抽出用の識別タグ(正規表現バージョン)
   // トップページ
@@ -170,6 +179,7 @@ var
   Path,
   NvStat,
   FileName,
+  SaveName,
   StartPage: string;
   RegEx: TRegExpr;
   hWnd: THandle;
@@ -554,11 +564,14 @@ begin
       Elapsed.Caption := '経過時間：' + FormatDateTime('nn:ss', Now - StartTime);
       Application.ProcessMessages;
       if hWnd <> 0 then
-        SendMessage(hWnd, WM_DLINFO, n, 1);
+      begin
+        SendMessage(hWnd, WM_DLINFO, n, sc{1});
+        Application.ProcessMessages;
+      end;
       if Cancel then
         Break;
       // サーバーへの負担を減らすため1秒のインターバルを入れる
-      Sleep(1000);   // Sleep処理を削除したり、この数値を小さくすることを禁止します
+      Sleep(500);   // Sleep処理を削除したり、この数値を小さくすることを禁止します
     end;
     Inc(i);
     Inc(n);
@@ -570,7 +583,7 @@ procedure THameln.ParseShort(Page: string);
 var
   title, auther, authurl,
   sendstr, header, sect,
-  body, footer: string;
+  body, footer, tmp: string;
   ws: WideString;
 begin
   title := ''; auther := ''; authurl := '';
@@ -586,6 +599,7 @@ begin
     title := ReplaceRegExpr('》', title, '】');
     title := ProcTags('【短編】' + title);
     // ファイル名を準備する
+    NvTitle.Caption := '作品タイトル：' + title;
     if FileName = '' then
       FileName := Path + PathFilter(title) + '.txt';
   end;
@@ -604,7 +618,7 @@ begin
     if authurl <> '' then
       authurl:= 'https:' + authurl;
   end;
-  // 前書き
+  // 短編の前書き
   header := '';
   RegEx.Expression  := SSMAEGAKI;
   RegEx.InputString := Page;
@@ -615,6 +629,19 @@ begin
     header := ReplaceRegExpr('<hr', header, '');
     header := ProcTags(header);
   end;
+  // 通常の前書き
+  tmp := '';
+  RegEx.Expression  := SMAEGAKI;
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    tmp := RegEx.Match[0];
+    tmp := ReplaceRegExpr('<div id="maegaki">', tmp, '');
+    tmp := ReplaceRegExpr('</divc>', tmp, '');
+    tmp := ProcTags(tmp);
+  end;
+  if tmp <> '' then
+    header := header + #13#10 + AO_HR + #13#10 + tmp;
   // Naro2mobiから呼び出された場合は進捗状況をSendする
   if hWnd <> 0 then
   begin
@@ -625,6 +652,7 @@ begin
     Cds.cbData := ByteLength(ws) + 2;
     Cds.lpData := PWideChar(ws);
     SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
+    Application.ProcessMessages;
   end;
 
   // 話タイトル
@@ -722,6 +750,7 @@ begin
       title := ProcTags(title);
       UTF8Delete(MainPage, 1, sp - 1);
       NvTitle.Caption := '作品タイトル：' + title;
+      Application.ProcessMessages;
       // ファイル名を準備する
       if FileName = '' then
         FileName := Path + PathFilter(title) + '.txt';
@@ -841,6 +870,7 @@ begin
         Cds.cbData := ByteLength(ws) + 2;
         Cds.lpData := PWideChar(ws);
         SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
+        Application.ProcessMessages;
       end;
     end else
       Status.Caption := 'トップページから情報を取得出来ませんでした.';
@@ -931,6 +961,7 @@ begin
   FmHt      := Height;
   IsCalled  := False;
   FileName  := '';
+  SaveName  := '';
   hWnd      := 0;
 
   // 保存されたパラメータを読み込む(IniFilesを用いるほどではないので原始的な方法で)
@@ -967,6 +998,7 @@ begin
   begin
     Exit;
   end;
+
   // オプション引数取得
   for i := 0 to ParamCount - 1 do
   begin
@@ -1005,9 +1037,9 @@ begin
       end;
     // それ以外であれば保存ファイル名
     end else begin
-      FileName := TrimSpace(op);
+      SaveName := TrimSpace(op);
       if UTF8UpperCase(ExtractFileExt(op)) <> '.TXT' then
-        FileName := FileName + '.txt';
+        SaveName := SaveName + '.txt';
     end;
   end;
 end;
@@ -1021,12 +1053,14 @@ end;
 procedure THameln.FormShow(Sender: TObject);
 begin
   inherited;
-  if (URLadr <> '') and (FileName  <> '') then
+
+  if (URLadr <> '') and (SaveName  <> '') then
   begin
     Left   := -1000;
     Top    := 0;
     Height := 1000;
   end;
+
   if GlobalWebView2Loader.InitializationError then
     showmessage(GlobalWebView2Loader.ErrorMessage)
   else if GlobalWebView2Loader.Initialized then
@@ -1074,8 +1108,13 @@ begin
   PageList.Clear;
   TitleList.Clear;
   NvTitle.Caption := '作品タイトル：';
+  Status.Caption  := '状態';
   StartTime := Now;
   Busy := True;
+  if SaveName <> '' then
+    FileName := SaveName
+  else
+    FileName := '';
   PrevURL := '';  // エピソードページを取得出来たか判定するために前後ページのURLを用いる
   NextURL := '';
   // トップページ情報を取得する

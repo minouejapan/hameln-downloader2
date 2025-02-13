@@ -16,10 +16,14 @@ uses
 
 {$R *.res}
 
+var
+  hMutex: THandle;
+	smem: ^TShareMem;
+
 begin
 {$IFDEF FPC}
-  Application.Scaled:=True;
 {$ENDIF}
+  Application.Scaled:=True;
   Application.Initialize;
   Application.MainFormOnTaskbar := True;
   Application.CreateForm(THameln, Hameln);

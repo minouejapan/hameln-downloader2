@@ -111,7 +111,7 @@ object Hameln: THameln
       OnClick = CancelBtnClick
     end
     object StartBtn: TButton
-      Left = 617
+      Left = 616
       Height = 25
       Top = 29
       Width = 86
