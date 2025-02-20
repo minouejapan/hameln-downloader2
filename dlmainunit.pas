@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.5 2025/02/20  Naro2mobiから呼び出すと正常にダウンロード出来ない場合がある不具合を修正した
+  1.41     02/13  短編のあらすじと本文の前書きを連結していたのを本文の前に移動した
   1.4 2025/02/12  単体で起動した際に連続で作品をDLすると次の作品にも前のファイル名が使わ
                   れる不具合を修正した
                   短編に前書きがある場合抽出されなかった不具合を修正した
@@ -582,8 +584,8 @@ end;
 procedure THameln.ParseShort(Page: string);
 var
   title, auther, authurl,
-  sendstr, header, sect,
-  body, footer, tmp: string;
+  sendstr, sshead, sect,
+  body, header, footer: string;
   ws: WideString;
 begin
   title := ''; auther := ''; authurl := '';
@@ -624,24 +626,22 @@ begin
   RegEx.InputString := Page;
   if RegEx.Exec then
   begin
-    header := RegEx.Match[0];
-    header := ReplaceRegExpr('</div>'#13#10'<div class="ss">', header, '');
-    header := ReplaceRegExpr('<hr', header, '');
-    header := ProcTags(header);
+    sshead := RegEx.Match[0];
+    sshead := ReplaceRegExpr('</div>'#13#10'<div class="ss">', sshead, '');
+    sshead := ReplaceRegExpr('<hr', sshead, '');
+    sshead := ProcTags(sshead);
   end;
   // 通常の前書き
-  tmp := '';
+  header := '';
   RegEx.Expression  := SMAEGAKI;
   RegEx.InputString := Page;
   if RegEx.Exec then
   begin
-    tmp := RegEx.Match[0];
-    tmp := ReplaceRegExpr('<div id="maegaki">', tmp, '');
-    tmp := ReplaceRegExpr('</divc>', tmp, '');
-    tmp := ProcTags(tmp);
+    header := RegEx.Match[0];
+    header := ReplaceRegExpr('<div id="maegaki">', header, '');
+    header := ReplaceRegExpr('</divc>', header, '');
+    header := ProcTags(header);
   end;
-  if tmp <> '' then
-    header := header + #13#10 + AO_HR + #13#10 + tmp;
   // Naro2mobiから呼び出された場合は進捗状況をSendする
   if hWnd <> 0 then
   begin
@@ -696,12 +696,14 @@ begin
   TextPage.Add(title);
   TextPage.Add(auther);
   TextPage.Add(AO_PB2);
-  if header <> '' then
+  if sshead <> '' then
   begin
-    TextPage.Add(AO_KKL + URL.Text + #13#10 + header + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + URL.Text + #13#10 + sshead + #13#10 + AO_KKR);
     TextPage.Add(AO_PB2);
   end;
   TextPage.Add(AO_SEB + sect + AO_SEE);
+  if HEADER <> '' then
+    TextPage.Add(AO_KKL + HEADER + #13#10 + AO_KKR);
   TextPage.Add(body);
   if footer <> '' then
     TextPage.Add(AO_KKL + footer + #13#10 + AO_KKR);
@@ -1181,6 +1183,10 @@ begin
   begin
     while Timer1.Enabled do
       Sleep(100);
+    // Windowの生成が完了しないうちにダウンロードを開始するとNaro2mobiとのメッセージ
+    // ハンドリングがうまくいかず処理が不完全になる場合があるため1.5秒待つ
+    Sleep(1500);
+    Application.ProcessMessages;
     StartBtnClick(nil);
     Close;
   end;
