@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.6 2025/03/13  作品ステータスが連載(未完)と短編の場合に連載状況を取得出来なかった不具合を臭瀬下
+                  保存ファイル名にも連載状況を付加するようにした
   1.5 2025/02/20  Naro2mobiから呼び出すと正常にダウンロード出来ない場合がある不具合を修正した
   1.41     02/13  短編のあらすじと本文の前書きを連結していたのを本文の前に移動した
   1.4 2025/02/12  単体で起動した際に連続で作品をDLすると次の作品にも前のファイル名が使わ
@@ -750,6 +752,9 @@ begin
       title := ReplaceRegExpr('《', title, '【');
       title := ReplaceRegExpr('》', title, '】');
       title := ProcTags(title);
+      // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
+      if UTF8Pos('完結', title) = 0 then
+        title := NvStat + title;
       UTF8Delete(MainPage, 1, sp - 1);
       NvTitle.Caption := '作品タイトル：' + title;
       Application.ProcessMessages;
@@ -843,9 +848,6 @@ begin
         end else
           Break;
       end;
-      // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
-      if UTF8Pos('完結', title) = 0 then
-        title := NvStat + title;
       TextPage.Add(title);
       TextPage.Add(auther);
       TextPage.Add(AO_PB2);
@@ -899,7 +901,11 @@ begin
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
-        Result := '【連載中】';
+        Result := '【連載中】'
+      else if UTF8Pos('連載(未完)', str) > 0 then
+        Result := '【連載中】'
+      else if UTF8Pos('短編', str) > 0 then
+        Result := '【短編】';
     end;
   end;
 end;
