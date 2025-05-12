@@ -1,7 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  1.6 2025/03/13  作品ステータスが連載(未完)と短編の場合に連載状況を取得出来なかった不具合を修正した
+  1.7 2025/05/13  挿絵以外のリンクも挿し絵として誤変換する対策として挿絵リンク検索パターンを厳格化した
+  1.6 2025/03/13  作品ステータスが連載(未完)と短編の場合に連載状況を取得出来なかった不具合を臭瀬下
                   保存ファイル名にも連載状況を付加するようにした
   1.5 2025/02/20  Naro2mobiから呼び出すと正常にダウンロード出来ない場合がある不具合を修正した
   1.41     02/13  短編のあらすじと本文の前書きを連結していたのを本文の前に移動した
@@ -167,7 +168,8 @@ const
   SBODY    = '<div id="honbun">.*?</div>';                                          // 本文
   SLINEB   = '<p id=".*?">';                                                        // 行始まり
   SLINEE   = '</p>';                                                                // 行終わり
-  SIMAGE   = '<a href=".*?" alt="挿絵" name="img">.*?</a>';                                               // 挿絵
+  //SIMAGE   = '<a href=".*?" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
+  SIMAGE   = '<a href="https?://([\w-]+\.)+[\w-]+(/[\w-./?%&=]*)" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
 
 
 // ユーザメッセージID
@@ -341,7 +343,7 @@ begin
   begin
     str := RegEx.Match[0];
     str := ReplaceRegExpr('<a href="', str, AO_PIB);
-    str := ReplaceRegExpr('" alt="挿絵" name="img">.*?</a>', str, AO_PIE);
+    str := ReplaceRegExpr('" alt="挿絵" name="img">【挿絵表示】</a>', str, AO_PIE);
     UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);
     UTF8Insert(str, Base, RegEx.MatchPos[0]);
     RegEx.InputString := Base;

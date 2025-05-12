@@ -200,6 +200,7 @@ var
   tmp, cd: string;
   w, mp, ml: integer;
   ch: Char;
+  wch: WideChar;
   r: TRegExpr;
 begin
   // エスケープされた文字
@@ -238,6 +239,25 @@ begin
         r.InputString := tmp;
       until not r.Exec;
     end;
+    // unicodeエスケープ文字(\uxxxx)
+    r.Expression  := '\\u[0-9A-Fa-f]{4}';
+    r.InputString := tmp;
+    if r.Exec then
+    begin
+      repeat
+        UTF8Delete(tmp, r.MatchPos[0], r.MatchLen[0]);
+        cd := r.Match[0];
+        UTF8Delete(cd, 1, 2);   // \uを削除する
+        UTF8Insert('$', cd, 1); // 先頭に16進数接頭文字$を追加する
+        try
+          w := StrToInt(cd);
+          wch := WideChar(w);
+        except
+          wch := '？';
+        end;
+        UTF8Insert(UTF16ToUTF8(wch), tmp, r.MatchPos[0]);
+      until not r.ExecNext;
+    end;
   finally
     r.Free;
   end;
@@ -250,15 +270,15 @@ end;
 function PathFilter(PassName: string): string;
 var
   path: string;
-  tmp: AnsiString;
+  tmp: WideString;
 begin
   // ファイル名を一旦ShiftJISに変換して再度Unicode化することでShiftJISで使用
   // 出来ない文字を除去する
 {$IFDEF FPC}
-  tmp  := UTF8ToWinCP(PassName);
-  path := WinCPToUTF8(tmp);      // これでUTF-8依存文字は??に置き換わる
+  tmp  := UTF8ToUTF16(PassName);
+  path := UTF16ToUTF8(tmp);      // これでUTF-8依存文字は??に置き換わる
 {$ELSE}
-  tmp  := AnsiString(PassName);
+  tmp  := WideString(PassName);
 	path := string(tmp);
 {$ENDIF}
   // ファイル名として使用できない文字を'-'に置換する
