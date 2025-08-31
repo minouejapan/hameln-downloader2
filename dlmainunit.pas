@@ -1,7 +1,9 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  1.7 2025/05/13  挿絵以外のリンクも挿し絵として誤変換する対策として挿絵リンク検索パターンを厳格化した
+  1.8 2025/08/31  脚注の処理を追加した
+                  あらすじ内の挿絵処理を追加した
+  1.7 2025/05/13  挿し絵以外のリンクも挿し絵として誤変換する対策として挿絵リンク検索パターンを厳格化した
   1.6 2025/03/13  作品ステータスが連載(未完)と短編の場合に連載状況を取得出来なかった不具合を臭瀬下
                   保存ファイル名にも連載状況を付加するようにした
   1.5 2025/02/20  Naro2mobiから呼び出すと正常にダウンロード出来ない場合がある不具合を修正した
@@ -158,6 +160,8 @@ const
   SSAUTHER = '作：<a href=".*?">.*?</a>';                                           // 作者
   SSMAEGAKI= '</div>'#13#10'<div class="ss">.*?<hr';                                // 前書き部分
   SSATOGAKI= '<div id="atogaki">.*?><br>.*?</div>';
+  SFNMARK  = '<a class="footnote_link".*?>.*?</a>';                                 // 脚注記号
+  SFNTEXT  = '<div class="footnote_text".*?>.*?</div>';                             // 脚注
   SSSECT   = '<span style="font-size:120%"> .*?</span>';                            // 話
   SSBODY   = '<div id="honbun">.*?</div>';                                          // 短編本文
   // 各話ページ
@@ -168,8 +172,8 @@ const
   SBODY    = '<div id="honbun">.*?</div>';                                          // 本文
   SLINEB   = '<p id=".*?">';                                                        // 行始まり
   SLINEE   = '</p>';                                                                // 行終わり
-  //SIMAGE   = '<a href=".*?" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
-  SIMAGE   = '<a href="https?://([\w-]+\.)+[\w-]+(/[\w-./?%&=]*)" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
+  SIMAGE   = '<a href=".*?" alt="挿絵" name=.*?>【挿絵表示】</a>';                  // 挿絵
+  //SIMAGE   = '<a href="https?://([\w-]+\.)+[\w-]+(/[\w-./?%&=]*)" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
 
 
 // ユーザメッセージID
@@ -343,7 +347,7 @@ begin
   begin
     str := RegEx.Match[0];
     str := ReplaceRegExpr('<a href="', str, AO_PIB);
-    str := ReplaceRegExpr('" alt="挿絵" name="img">【挿絵表示】</a>', str, AO_PIE);
+    str := ReplaceRegExpr('" alt="挿絵" name=.*?>【挿絵表示】</a>', str, AO_PIE);
     UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);
     UTF8Insert(str, Base, RegEx.MatchPos[0]);
     RegEx.InputString := Base;
@@ -383,7 +387,7 @@ end;
 function THameln.ParsePage(Page: string): Boolean;
 var
   sp, i, mp, ml: integer;
-  header, footer, chapt, sect, body, tmp: string;
+  header, footer, chapt, sect, body, tmp, footnote: string;
   lines: TStringList;
 begin
   Result := True;
@@ -449,7 +453,6 @@ begin
     UTF8Delete(Page, 1, RegEx.MatchPos[0]);
     RegEx.InputString := Page;
   end;
-  body := ChangeAozoraTag(body);
   body := ProcTags(body);
   // 全角空白が64個以上連続していた場合はダミーと判断して全て除去する
   lines := TStringList.Create;
@@ -472,6 +475,29 @@ begin
     lines.Free;
   end;
   UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
+  // 脚注
+  tmp := '';
+  RegEx.Expression  := SFNMARK;
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    tmp := RegEx.Match[0];
+    tmp := ReplaceRegExpr('<a class="footnote_link".*?>', tmp, '');
+    tmp := ReplaceRegExpr('</a>', tmp, '');
+    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
+    footnote := tmp;
+    tmp := '';
+    RegEx.Expression  := SFNTEXT;
+    RegEx.InputString := Page;
+    if RegEx.Exec then
+    begin
+      tmp := RegEx.Match[0];
+      tmp := ReplaceRegExpr('<div class="footnote_text".*?>', tmp, '');
+      tmp := ReplaceRegExpr('</div>', tmp, '');
+      UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
+      footnote := footnote + '　' + tmp;
+    end;
+  end;
   // 後書き
   footer := '';
   RegEx.Expression  := SATOGAKI;
@@ -493,6 +519,8 @@ begin
     TextPage.Add(body)
   else
     TextPage.Add('★HTMLページ読み込みエラー');
+  if footnote <> '' then
+    TextPage.Add(AO_KKL + #13#10+ AO_HR + #13#10 + footnote + #13#10 + AO_KKR);
   if footer <> '' then
     TextPage.Add(AO_KKL + footer + #13#10 + AO_KKR);
   TextPage.Add('');
