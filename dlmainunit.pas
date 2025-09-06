@@ -493,29 +493,6 @@ begin
       tmp := ReplaceRegExpr('</div>', tmp, '');
       footnote := footnote + tmp + #13#10;
     until not RegEx.ExecNext;
-  (*
-  RegEx.Expression  := SFNMARK;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    tmp := RegEx.Match[0];
-    tmp := ReplaceRegExpr('<a class="footnote_link".*?>', tmp, '');
-    tmp := ReplaceRegExpr('</a>', tmp, '');
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
-    footnote := tmp;
-    tmp := '';
-    RegEx.Expression  := SFNTEXT;
-    RegEx.InputString := Page;
-    if RegEx.Exec then
-    begin
-      tmp := RegEx.Match[0];
-      tmp := ReplaceRegExpr('<div class="footnote_text".*?>', tmp, '');
-      tmp := ReplaceRegExpr('</div>', tmp, '');
-      UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
-      footnote := footnote + '　' + tmp;
-    end;
-  end;
-  *)
   // 後書き
   footer := '';
   RegEx.Expression  := SATOGAKI;
