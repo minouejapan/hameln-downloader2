@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  1.9 2025/09/06  脚注が複数ある場合でもすべて取得出来るように処理を変更した
   1.8 2025/08/31  脚注の処理を追加した
                   挿絵処理がうまく出来ない場合があった不具合を修正した
   1.7 2025/05/13  挿し絵以外のリンクも挿し絵として誤変換する対策として挿絵リンク検索パターンを厳格化した
@@ -160,8 +161,9 @@ const
   SSAUTHER = '作：<a href=".*?">.*?</a>';                                           // 作者
   SSMAEGAKI= '</div>'#13#10'<div class="ss">.*?<hr';                                // 前書き部分
   SSATOGAKI= '<div id="atogaki">.*?><br>.*?</div>';
-  SFNMARK  = '<a class="footnote_link".*?>.*?</a>';                                 // 脚注記号
-  SFNTEXT  = '<div class="footnote_text".*?>.*?</div>';                             // 脚注
+  //SFNMARK  = '<a class="footnote_link".*?>.*?</a>';                                 // 脚注記号
+  //SFNTEXT  = '<div class="footnote_text".*?>.*?</div>';                             // 脚注
+  SFNTEXT  = '<a class="footnote_link".*?>.*?</a>.*?<div class="footnote_text".*?>.*?</div>';  // 脚注
   SSSECT   = '<span style="font-size:120%"> .*?</span>';                            // 話
   SSBODY   = '<div id="honbun">.*?</div>';                                          // 短編本文
   // 各話ページ
@@ -387,7 +389,7 @@ end;
 function THameln.ParsePage(Page: string): Boolean;
 var
   sp, i, mp, ml: integer;
-  header, footer, chapt, sect, body, tmp, footnote: string;
+  header, footer, chapt, sect, body, tmp, footnote, fntmp: string;
   lines: TStringList;
 begin
   Result := True;
@@ -476,7 +478,22 @@ begin
   end;
   UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
   // 脚注
-  tmp := '';
+  tmp := ''; footnote := '';
+  RegEx.Expression  := SFNTEXT;
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+    repeat
+      fntmp := RegEx.Match[0];
+      // 脚注マーク
+      tmp := ReplaceRegExpr('<a class="footnote_link".*?>', fntmp, '');
+      tmp := ReplaceRegExpr('</a>.*?<div class="footnote_text".*?>.*?</div>', tmp, '');
+      footnote := footnote + tmp + '：' ;
+      // 脚注
+      tmp := ReplaceRegExpr('<a class="footnote_link".*?>.*?</a>.*?<div class="footnote_text".*?>', fntmp, '');
+      tmp := ReplaceRegExpr('</div>', tmp, '');
+      footnote := footnote + tmp + #13#10;
+    until not RegEx.ExecNext;
+  (*
   RegEx.Expression  := SFNMARK;
   RegEx.InputString := Page;
   if RegEx.Exec then
@@ -498,6 +515,7 @@ begin
       footnote := footnote + '　' + tmp;
     end;
   end;
+  *)
   // 後書き
   footer := '';
   RegEx.Expression  := SATOGAKI;
@@ -1368,5 +1386,4 @@ initialization
 
 
 end.
-
 
