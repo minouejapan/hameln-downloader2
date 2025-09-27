@@ -1,7 +1,12 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.0 2025/09/27  HTML構文解析を力技からSHParser(SimpleHTMLParser)による解析に変更した
+                  本文の一部を取得出来ない場合があった不具合を修正した
+                  前書き・後書きにある脚注を取得出来ていなかった不具合を修正した
+                  ソースコードの視認性向上のため要素抽出用判定タグを定数から埋め込みに変更した
   1.9 2025/09/06  脚注が複数ある場合でもすべて取得出来るように処理を変更した
+                  前書きの青空文庫タグ処理を修正した
   1.8 2025/08/31  脚注の処理を追加した
                   挿絵処理がうまく出来ない場合があった不具合を修正した
   1.7 2025/05/13  挿し絵以外のリンクも挿し絵として誤変換する対策として挿絵リンク検索パターンを厳格化した
@@ -53,15 +58,10 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Buttons,
   Lazutf8wrap,
 {$ENDIF}
-  RegExpr, WinINet,
+  RegExpr, SHParser, UniHTML,
   uWVBrowserBase, uWVBrowser,uWVWindowParent, uWVTypes, uWVTypeLibrary, uWVLoader;
 
 type
-	TShareMem = record
-    Busy, ProgN, PageN: integer;
-		Data: array[0..2048] of Char;
-	end;
-
   { THameln }
   THameln = class(TForm)
     Panel1: TPanel;
@@ -114,7 +114,7 @@ type
     IsCalled,
     NShort: Boolean;
     JsCnt,
-    WVMode: integer;
+    WVMode, PageN: integer;
     function ParsePage(Page: string): Boolean;
     procedure LoadEachPage;
     procedure ParseShort(Page: string);
@@ -144,39 +144,8 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver1.4 2025/2/13';
+  VERSION  = 'ver2.0 2025/9/26';
   NVSITE   = 'https://syosetu.org';
-  // データ抽出用の識別タグ(正規表現バージョン)
-  // トップページ
-  STITLE   = '<span .*?itemprop="name">.*?</span>';                                 // タイトル
-  SAUTHER  = '<div align="right">作者：<span itemprop="author">.*?</a></span></div>';   // 作者
-  SAUTHER2 = '<div align="right">作者：<span itemprop="author">.*?</span></div>';   // 作者
-  SHEADER  = '<div class="ss">.*?<hr.*?></div>';                                    // 前書き部分
-  SCONTENT = '<div class="ss">.*?<table .*?>.*?</div>';                             // 目次部分
-  SCHAPTER = '<tr><td .*?><strong>.*?</strong></td></tr>';                          // 章(ないこともある)
-  SSECTION = '<span id=".*?">.*?</span>';                                           // 話
-  SSHORT   = '<div style=.*?>1 / 1</div>';                                          // 短編判別用
-  // 短編
-  SSTITLE  = '<span .*?><a href=\./>.*?</a></span>';                                // タイトル
-  SSAUTHER = '作：<a href=".*?">.*?</a>';                                           // 作者
-  SSMAEGAKI= '</div>'#13#10'<div class="ss">.*?<hr';                                // 前書き部分
-  SSATOGAKI= '<div id="atogaki">.*?><br>.*?</div>';
-  //SFNMARK  = '<a class="footnote_link".*?>.*?</a>';                                 // 脚注記号
-  //SFNTEXT  = '<div class="footnote_text".*?>.*?</div>';                             // 脚注
-  SFNTEXT  = '<a class="footnote_link".*?>.*?</a>.*?<div class="footnote_text".*?>.*?</div>';  // 脚注
-  SSSECT   = '<span style="font-size:120%"> .*?</span>';                            // 話
-  SSBODY   = '<div id="honbun">.*?</div>';                                          // 短編本文
-  // 各話ページ
-  SHEAD    = '<p><span.*?><a href=\./>.*?</a></span>';                              // タイトルまで
-  SMAEGAKI = '<div id="maegaki">.*?</div>';                                         // 前書き
-  SATOGAKI = '<div id="atogaki">.*?</div>';                                         // 後書き
-  SPTITLE  = '<span style="font-size:120%">.*?</span>';                             // 各話タイトル
-  SBODY    = '<div id="honbun">.*?</div>';                                          // 本文
-  SLINEB   = '<p id=".*?">';                                                        // 行始まり
-  SLINEE   = '</p>';                                                                // 行終わり
-  SIMAGE   = '<a href=".*?" alt="挿絵" name=.*?>【挿絵表示】</a>';                  // 挿絵
-  //SIMAGE   = '<a href="https?://([\w-]+\.)+[\w-]+(/[\w-./?%&=]*)" alt="挿絵" name="img">【挿絵表示】</a>';                // 挿絵
-
 
 // ユーザメッセージID
   WM_DLINFO  = WM_USER + 30;
@@ -198,78 +167,11 @@ var
   CDS: TCopyDataStruct;
   StartN: integer;
 
-// WinINetを用いたHTMLファイルのダウンロード
-function LoadFromHTML(URLadr: string): string;
-var
-  hSession    : HINTERNET;
-  hService    : HINTERNET;
-  dwBytesRead : DWORD;
-  dwFlag      : DWORD;
-  lpBuffer    : PChar;
-  RBuff       : TMemoryStream;
-  TBuff       : TStringList;
-begin
-  Result   := '';
-  // ハーメルンサイトのR18作品アクセス用Cookie
-  if not InternetSetCookie(PChar('https://syosetu.org'{URLadr}), PChar('over18'), PChar('off')) then
-    Writeln(#13#10'Cookieの設定に失敗しました.');
-
-  hSession := InternetOpen('WinINet', INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
-
-  if Assigned(hSession) then
-  begin
-    dwFlag   := INTERNET_FLAG_RELOAD;
-    hService := InternetOpenUrl(hSession, PChar(URLadr), nil, 0, dwFlag, 0);
-    if Assigned(hService ) then
-    begin
-      RBuff := TMemoryStream.Create;
-      try
-        lpBuffer := AllocMem(65536);
-        try
-          dwBytesRead := 65535;
-          while True do
-          begin
-            if InternetReadFile(hService, lpBuffer, 65535,{SizeOf(lpBuffer),}dwBytesRead) then
-            begin
-              if dwBytesRead = 0 then
-                break;
-              RBuff.WriteBuffer(lpBuffer^, dwBytesRead);
-            end else
-              break;
-          end;
-        finally
-          FreeMem(lpBuffer);
-        end;
-        TBuff := TStringList.Create;
-        try
-          RBuff.Position := 0;
-          TBuff.LoadFromStream(RBuff, TEncoding.UTF8);
-          Result := TBuff.Text;
-        finally
-          TBuff.Free;
-        end;
-      finally
-        RBuff.Free;
-      end;
-    end;
-    InternetCloseHandle(hService);
-  end;
-end;
 
 // HTML内のJavaScript実行が完了したことを判定する
 function IsScriptDone(Src: string): boolean;
 begin
   Result := Src <> '';
-end;
-
-// 本文の改行タグを改行コードに変換する
-function ChangeBRK(Base: string): string;
-var
-  str: string;
-begin
-  str    := UTF8StringReplace(Base, '<br />', #13#10, [rfReplaceAll]);
-  str    := UTF8StringReplace(str, '<br/>',   #13#10, [rfReplaceAll]);
-  Result := UTF8StringReplace(str, '<br>',    #13#10, [rfReplaceAll]);
 end;
 
 // 本文の文字装飾を除去する
@@ -280,15 +182,12 @@ begin
   tmp := Base;
   tmp := ReplaceRegExpr('<span .*?>', tmp, '');
   tmp := ReplaceRegExpr('</span>', tmp, '');
-  tmp := ReplaceRegExpr('<div .*?>', tmp, '');
-  tmp := ReplaceRegExpr('</div>', tmp, '');
   tmp := ReplaceRegExpr('<table .*?>', tmp, '');
   tmp := ReplaceRegExpr('<th .*?>', tmp, '');
   tmp := ReplaceRegExpr('<tr .*?>', tmp, '');
   tmp := ReplaceRegExpr('<td .*?>', tmp, '');
   tmp := ReplaceRegExpr('<tr>', tmp, '');
   tmp := ReplaceRegExpr('</tr>', tmp, '');
-  tmp := ReplaceRegExpr('<hr>', tmp, AO_HR);
 
   Result := tmp;
 end;
@@ -307,13 +206,10 @@ begin
     tmp := ReplaceRegExpr('</span>', tmp, '');
     tmp := ReplaceRegExpr('<ruby><rb>', tmp, '');
     tmp := ReplaceRegExpr('</rb>.*?</ruby>', tmp, '');
-    UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);         // 傍点範囲の文字列を削除
+    UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);      // 傍点範囲の文字列を削除
     UTF8Insert(AO_EMB + tmp + AO_EME, Base, RegEx.MatchPos[0]);  // 変換後の文字列を挿入
     RegEx.InputString := Base;
   end;
-  // 本文中の余計なタグを除去する
-  Base := ReplaceRegExpr('<style>.*?</style>', Base, '');
-  Base := ReplaceRegExpr('<script>.*?</script>', Base, '');
 
   Result := Base;
 end;
@@ -323,8 +219,9 @@ function ChangeRuby(Base: string): string;
 var
   tmp: string;
 begin
+  tmp := Base;
   // <rp>タグを除去
-  tmp := UTF8StringReplace(Base, '<rp>(</rp>', '', [rfReplaceAll]);
+  tmp := UTF8StringReplace(tmp, '<rp>(</rp>', '', [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '<rp>)</rp>', '', [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '<rp>（</rp>', '', [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '<rp>）</rp>', '', [rfReplaceAll]);
@@ -338,186 +235,121 @@ begin
   Result := tmp;
 end;
 
-// 埋め込まれた画像リンクを青空文庫形式に変換する
+// 埋め込まれた画像リンク/URLリンクを青空文庫形式に変換する
 function ChangeImage(Base: string): string;
 var
-  str: string;
+  str, tmp: string;
 begin
-  RegEx.Expression  := SIMAGE;
-  RegEx.InputString := Base;
+  tmp := Base;
+  RegEx.Expression  := '<a href=".{6,60}" alt="挿絵" name=.*?>【挿絵表示】</a>';
+  RegEx.InputString := tmp;
   while RegEx.Exec do
   begin
     str := RegEx.Match[0];
     str := ReplaceRegExpr('<a href="', str, AO_PIB);
     str := ReplaceRegExpr('" alt="挿絵" name=.*?>【挿絵表示】</a>', str, AO_PIE);
-    UTF8Delete(Base, RegEx.MatchPos[0], RegEx.MatchLen[0]);
-    UTF8Insert(str, Base, RegEx.MatchPos[0]);
-    RegEx.InputString := Base;
+    tmp := ReplaceRegExpr(RegEx.Match[0], tmp, str);
+    RegEx.Expression  := '<a href=".{6,60}" alt="挿絵" name=.*?>【挿絵表示】</a>';
+    RegEx.InputString := tmp;
   end;
-  Result := Base;
+  Result := tmp;
 end;
 
-// 本文のリンクタグを除去する
+// 本文のリンクタグを除去・置換する
 function Delete_tags(Base: string): string;
-begin
-  // リンクタグ
-  Base := ReplaceRegExpr('<a href=".*?">', Base, '');
-  Base := ReplaceRegExpr('</a>', Base, '');
-  // 行タグ
-  Base := ReplaceRegExpr('<p id=".*?">', Base, '');  // 各行を整形
-  Base := ReplaceRegExpr('</p>', Base, #13#10);
-
-  Result := Base;
-end;
-
-// タグ類処理(順番を間違えると誤作動する)
-function ProcTags(Str: string): string;
 var
   tmp: string;
 begin
-  tmp := ChangeAozoraTag(Str);
-  tmp := ChangeBrk(tmp);
-  tmp := EliminateDeco(tmp);
-  tmp := ChangeBouten(tmp);
+  tmp := Base;
+  // script
+  tmp := ReplaceRegExpr('<script type="text/javascript">[\s\S]*', tmp, '');
+  tmp := ReplaceRegExpr('<script[\s\S]*?/script>', tmp, '');
+  // 本文中の余計なタグを除去する
+  tmp := ReplaceRegExpr('<style>[\s\S]*?</style>', tmp, '');
+  tmp := ReplaceRegExpr('<div id="maegaki_open">[\s\S]*', tmp, '');
+  tmp := ReplaceRegExpr('<div id="atogaki_open">[\s\S]*', tmp, '');
+  // 水平線に置換する
+  tmp := ReplaceRegExpr('<hr>', tmp, #13#10 + AO_HR + #13#10);
+  tmp := ReplaceRegExpr('<div class="footnote">', tmp, #13#10 + AO_HR + #13#10);
+  tmp := ReplaceRegExpr('</p>', tmp, #13#10);
+
+  Result := tmp;
+end;
+
+// タグ類処理(順番を間違えると誤作動する)
+function ProcTags(Base: string): string;
+var
+  tmp: string;
+begin
+  tmp := Base;
+  tmp := ChangeAozoraTag(tmp);
   tmp := Restore2RealChar(tmp);
-  tmp := ChangeImage(tmp);
   tmp := ChangeRuby(tmp);
-  Result := Delete_tags(tmp);
+  tmp := ChangeBouten(tmp);
+  tmp := ChangeImage(tmp);
+  tmp := EliminateDeco(tmp);
+  tmp := Delete_tags(tmp);
+  Result := tmp;
 end;
 
 // 小説本文をHTMLから抜き出して整形する
 function THameln.ParsePage(Page: string): Boolean;
 var
-  sp, i, mp, ml: integer;
-  header, footer, chapt, sect, body, tmp, footnote, fntmp: string;
-  lines: TStringList;
+  sp, mp, ml: integer;
+  header, footer, chapt, sect, body, htmlsrc: string;
+  shp: TSHParser;
 begin
   Result := True;
-  // 前書き
-  header := '';
-  RegEx.Expression  := SMAEGAKI;
+  htmlsrc := Page;
+  // 検索速度を上げるため<body>～</body>部分だけを切り出す
   RegEx.InputString := Page;
+  RegEx.Expression  := '<body[\s\S]*?</body>';
   if RegEx.Exec then
-  begin
-    header := RegEx.Match[0];
-    mp := RegEx.MatchPos[0];
-    ml := RegEx.MatchLen[0];
-    header := ReplaceRegExpr('<div id="maegaki">', header, '');
-    header := ReplaceRegExpr('</div>', header, '');
-    header := ProcTags(header);
-  end;
-  // 章・話タイトル
-  chapt := ''; sect := '';
-
-  sp := Pos('<li class="novelmokuzi">', Page);
-  if sp > 0 then
-    Delete(Page, 1, sp);
-
-  body := '';
-  RegEx.Expression  := SPTITLE;    //<span style=.*?>.*?</span>
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    sect := RegEx.Match[0];
-    mp := RegEx.MatchPos[0];
-    ml := RegEx.MatchLen[0];
-    sect := ReplaceRegExpr('<span .*?>', sect, '');
-    sect := ReplaceRegExpr('</span>', sect, '');
-    sect := ProcTags(sect);
-    // 章タイトルが含まれていれば分離する
-    sp := UTF8Pos(#13#10, sect);
-    if sp > 0 then
-    begin
-      chapt := Trim(UTF8Copy(sect, 1, sp - 1));
-      sect  := Trim(UTF8Copy(sect, sp + 2, Length(sect)));
-    end else
-      sect := Trim(sect);
-    UTF8Delete(Page, 1, mp + ml - 1);
-  end else
-    Result:= False;
-  // 本文
-  body := '';
-  RegEx.InputString := Page;
-  // honbunタグと本文開始の<p id="0">の間に文章があれば抽出する
-  RegEx.Expression  := '<div id="honbun">.*?<p id="0">';
-  if RegEx.Exec then
-  begin
-    tmp := RegEx.Match[0];
-    tmp := ReplaceRegExpr('<div id="honbun">', tmp, '');
-    tmp := ReplaceRegExpr('<p id="0">', tmp, '');
-    body := tmp;
-  end;
-  // 装飾用特殊タグで本文部分を誤認識しないように一行ずつ抽出する
-  RegEx.Expression  := '<p id="\d*?">.*?</p>';//SBODY;
-  while RegEx.Exec do
-  begin
-    body := body + RegEx.Match[0];
-    UTF8Delete(Page, 1, RegEx.MatchPos[0]);
-    RegEx.InputString := Page;
-  end;
-  body := ProcTags(body);
-  // 全角空白が64個以上連続していた場合はダミーと判断して全て除去する
-  lines := TStringList.Create;
+    htmlsrc := RegEx.Match[0];
+  htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+  body := ''; header := ''; footer := ''; chapt := ''; sect := '';
+  shp := TSHParser.Create(htmlsrc);
+  //MessageBoxW(Handle, PWideChar('ノード: ' + IntToStr(shp.NodeComp)), '', 0);
   try
-    lines.Text := body;
-    RegEx.Expression := ' *';
-    for i := 0 to lines.Count - 1 do
+    // hameln専用変換フィルタを登録する
+    shp.OnBeforeGetText:= @ProcTags;
+    // 本文
+    body   := shp.Find('div', 'id', 'honbun');
+    // 前書き
+    header := shp.FindRegex('<div id="maegaki">', '<div id="maegaki_open">');
+    // 後書き
+    footer := shp.FindRegex('<div id="atogaki">', '<div id="atogaki_open">');
+    // 章・話タイトル
+    sect := shp.FindRegex('<div style=.*?>\d{1,5} / \d{1,5}</div><span style="font-size:120%">', '</span>');
+    if sect = '' then  // シンプルなタグ構成の場合がある
+      sect := shp.FindRegex('</div><span style="font-size:120%">', '</span><span');
+    if sect <> '' then
     begin
-      RegEx.InputString := lines.Strings[i];
-      if RegEx.Exec then
+      // 章タイトルが含まれていれば分離する
+      sp := UTF8Pos(#13#10, sect);
+      if sp > 0 then
       begin
-        if (RegEx.MatchPos[0] = 1) and (RegEx.MatchLen[0] > 10) then
-        begin
-          lines.Strings[i] := ReplaceRegExpr(' *', lines.Strings[i], '');
-        end;
-      end;
-    end;
-    body := lines.Text;
-  finally
-    lines.Free;
+        chapt := Trim(UTF8Copy(sect, 1, sp - 1));
+        sect  := Trim(UTF8Copy(sect, sp + 2, Length(sect)));
+      end else
+        sect := Trim(sect);
+    end else
+      Result := False;
+   finally
+    shp.Free;
   end;
-  UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
-  // 脚注
-  tmp := ''; footnote := '';
-  RegEx.Expression  := SFNTEXT;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-    repeat
-      fntmp := RegEx.Match[0];
-      // 脚注マーク
-      tmp := ReplaceRegExpr('<a class="footnote_link".*?>', fntmp, '');
-      tmp := ReplaceRegExpr('</a>.*?<div class="footnote_text".*?>.*?</div>', tmp, '');
-      footnote := footnote + tmp + '：' ;
-      // 脚注
-      tmp := ReplaceRegExpr('<a class="footnote_link".*?>.*?</a>.*?<div class="footnote_text".*?>', fntmp, '');
-      tmp := ReplaceRegExpr('</div>', tmp, '');
-      footnote := footnote + tmp + #13#10;
-    until not RegEx.ExecNext;
-  // 後書き
-  footer := '';
-  RegEx.Expression  := SATOGAKI;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    footer := RegEx.Match[0];
-    footer := ReplaceRegExpr('<div id="atogaki">', footer, '');
-    footer := ReplaceRegExpr('</div>', footer, '');
-    footer := ProcTags(footer);
-    UTF8Delete(Page, 1, RegEx.MatchPos[0] + RegEx.MatchLen[0] - 1);
-  end;
+
   if chapt <> '' then
     TextPage.Add(AO_CPB + chapt + AO_CPE);
   TextPage.Add(AO_SEB + sect + AO_SEE);
   if header <> '' then
-    TextPage.Add(AO_KKL + header + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + #13#10 + header + #13#10 + AO_KKR + #13#10);
   if body <> '' then
     TextPage.Add(body)
   else
     TextPage.Add('★HTMLページ読み込みエラー');
-  if footnote <> '' then
-    TextPage.Add(AO_KKL + #13#10+ AO_HR + #13#10 + footnote + #13#10 + AO_KKR);
   if footer <> '' then
-    TextPage.Add(AO_KKL + footer + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + #13#10 + footer + #13#10 + AO_KKR + #13#10);
   TextPage.Add('');
   TextPage.Add(AO_PB2);
   TextPage.Add('');
@@ -610,65 +442,50 @@ end;
 // 短編専用処理
 procedure THameln.ParseShort(Page: string);
 var
+  shp: TSHParser;
   title, auther, authurl,
-  sendstr, sshead, sect,
+  htmlsrc, sendstr, sshead, sect,
   body, header, footer: string;
   ws: WideString;
 begin
-  title := ''; auther := ''; authurl := '';
-  // タイトル
-  RegEx.Expression  := SSTITLE;
+  htmlsrc := Page;
+  // 検索速度を上げるため<body>～</body>部分だけを切り出す
   RegEx.InputString := Page;
+  RegEx.Expression  := '<body[\s\S]*?</body>';
   if RegEx.Exec then
-  begin
-    title := RegEx.Match[0];
-    title := ReplaceRegExpr('<span .*?><a href=\./>', title, '');
-    title := ReplaceRegExpr('</a></span>', title, '');
-    title := ReplaceRegExpr('《', title, '【');
-    title := ReplaceRegExpr('》', title, '】');
-    title := ProcTags('【短編】' + title);
-    // ファイル名を準備する
+    htmlsrc := RegEx.Match[0];
+  htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+  title := ''; auther := ''; authurl := '';
+  body := ''; sshead := ''; header := ''; footer := ''; sect := '';
+  shp := TSHParser.Create(htmlsrc);
+  try
+    // hameln専用変換フィルタを登録する
+    shp.OnBeforeGetText:= @ProcTags;
+    // タイトル
+    title := '【短編】' + shp.FindRegex('<span .*?><a href=.*?>', '</a></span>');
+     // ファイル名を準備する
     NvTitle.Caption := '作品タイトル：' + title;
     if FileName = '' then
       FileName := Path + PathFilter(title) + '.txt';
-  end;
-  // 作者・作者URL
-  RegEx.Expression  := SSAUTHER;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    auther := RegEx.Match[0];
-    authurl:= auther;
-    auther := ReplaceRegExpr('作：<a href=".*?">', auther, '');
-    auther := ReplaceRegExpr('</a>', auther, '');
-    auther := ProcTags(auther);
-    authurl:= ReplaceRegExpr('作：<a href="', authurl, '');
-    authurl:= ReplaceRegExpr('">.*?</a>', authurl, '');
+    // 作者
+    auther := shp.FindRegex('作：<a href=.*?>', '</a>');
+    authurl := shp.FindRegex('作：<a href="', '">.*?</a>');
     if authurl <> '' then
-      authurl:= 'https:' + authurl;
+      authurl := 'https:' + authurl;
+    // 短編前書き
+    sshead := shp.Find('div', 'class', 'ss');
+    // 話タイトル
+    sect := shp.Find('span', 'style', 'font-size:120%');
+    // 本文
+    body   := shp.Find('div', 'id', 'honbun');
+    // 前書き
+    header := shp.FindRegex('<div id="maegaki">', '<div id="maegaki_open">');
+    // 後書き
+    footer := shp.FindRegex('<div id="atogaki">', '<div id="atogaki_open">');
+   finally
+    shp.Free;
   end;
-  // 短編の前書き
-  header := '';
-  RegEx.Expression  := SSMAEGAKI;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    sshead := RegEx.Match[0];
-    sshead := ReplaceRegExpr('</div>'#13#10'<div class="ss">', sshead, '');
-    sshead := ReplaceRegExpr('<hr', sshead, '');
-    sshead := ProcTags(sshead);
-  end;
-  // 通常の前書き
-  header := '';
-  RegEx.Expression  := SMAEGAKI;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    header := RegEx.Match[0];
-    header := ReplaceRegExpr('<div id="maegaki">', header, '');
-    header := ReplaceRegExpr('</divc>', header, '');
-    header := ProcTags(header);
-  end;
+
   // Naro2mobiから呼び出された場合は進捗状況をSendする
   if hWnd <> 0 then
   begin
@@ -682,58 +499,20 @@ begin
     Application.ProcessMessages;
   end;
 
-  // 話タイトル
-  sect := '';
-  RegEx.Expression  := SSSECT;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    sect := RegEx.Match[0];
-    sect := ReplaceRegExpr('<span style="font-size:120%">', sect, '');
-    sect := ReplaceRegExpr('</span>', sect, '');
-    sect := ProcTags(Trim(sect));
-  end;
-  // 本文
-  body := '';
-  RegEx.Expression  := SSBODY;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    body := RegEx.Match[0];
-    body := ReplaceRegExpr('<div id="honbun">', body, '');
-    body := ReplaceRegExpr('</div>', body, '');
-    body := ReplaceRegExpr('<div id="honbun">', body, '');
-    body := ReplaceRegExpr('</div>', body, '');
-    body := ChangeAozoraTag(body);
-    body := ReplaceRegExpr('<p id=".*?">', body, '');  // 各行を整形
-    body := ReplaceRegExpr('</p>', body, #13#10);
-    body := ProcTags(body);
-  end;
-  // 後書き
-  footer := '';
-  RegEx.Expression  := SSATOGAKI;
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    footer := RegEx.Match[0];
-    footer := ReplaceRegExpr('<div id="atogaki">', footer, '');
-    footer := ReplaceRegExpr('</div>', footer, '');
-    footer := ProcTags(footer);
-  end;
   TextPage.Add(title);
   TextPage.Add(auther);
   TextPage.Add(AO_PB2);
   if sshead <> '' then
   begin
-    TextPage.Add(AO_KKL + URL.Text + #13#10 + sshead + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + #13#10 + URL.Text + #13#10 + sshead + #13#10 + AO_KKR + #13#10);
     TextPage.Add(AO_PB2);
   end;
   TextPage.Add(AO_SEB + sect + AO_SEE);
   if HEADER <> '' then
-    TextPage.Add(AO_KKL + HEADER + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + #13#10 + HEADER + #13#10 + AO_KKR + #13#10);
   TextPage.Add(body);
   if footer <> '' then
-    TextPage.Add(AO_KKL + footer + #13#10 + AO_KKR);
+    TextPage.Add(AO_KKL + #13#10 + footer + #13#10 + AO_KKR + #13#10);
   TextPage.Add(AO_PB2);
 
   LogFile.Add(URL.Text);
@@ -750,166 +529,102 @@ end;
 // トップページからタイトル、作者、前書き、各話情報を取り出す
 procedure THameln.ParseChapter(MainPage: string);
 var
-  sp, sc, sl, pn: integer;
-  title, auther, authurl, header, cont, sendstr, aurl: string;
+  shp: TSHParser;
+  i: integer;
+  htmlsrc, title, auther, authurl,
+  header, sendstr, aurl: string;
   ws: WideString;
 begin
-  title := ''; auther := ''; authurl := ''; header := ''; cont := '';
-  // 短編かどうかをチェックする
-  RegEx.Expression  := SSHORT;
+  title := ''; auther := ''; authurl := ''; header := '';
+  aurl := URL.Text;
+  if aurl[UTF8Length(aurl)] = '/' then
+    UTF8Delete(aurl, UTF8Length(aurl), 1);
+  // 短編は連載状況が短編でも複数ページの作品があるためページ数でチェックする
+  RegEx.Expression  := '<div style=.*?>1 / 1</div>';
   RegEx.InputString := MainPage;
   NShort := RegEx.Exec;
   // 短編専用処理
   if NShort then
   begin
     ParseShort(MainPage);
+  // そうでなければ連載作品として処理
   end else begin
-    // タイトル名
-    RegEx.Expression  := STITLE;
-    //RegEx.InputString := MainPage;
+    // HTMLソースから余分な情報を削除する
+    htmlsrc := MainPage;
+    RegEx.InputString:= MainPage;
+    RegEx.Expression := '<body[\s\S]*?</body>';
     if RegEx.Exec then
-    begin
-      sp := RegEx.MatchPos[0] + RegEx.MatchLen[0];
-      title := RegEx.Match[0];
-      // タイトルの前後のタグを除去する
-      title := ReplaceRegExpr('<span .*?itemprop="name">', title, '');
-      title := ReplaceRegExpr('</span>', title, '');
-      title := ReplaceRegExpr('《', title, '【');
-      title := ReplaceRegExpr('》', title, '】');
-      title := ProcTags(title);
+      htmlsrc := RegEx.Match[0];
+    htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+
+    shp := TSHParser.Create(htmlsrc);
+    try
+      // タイトル名
+      title := shp.FindRegex('<span .*?itemprop="name">', '</span>');
       // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
       if UTF8Pos('完結', title) = 0 then
         title := NvStat + title;
-      UTF8Delete(MainPage, 1, sp - 1);
       NvTitle.Caption := '作品タイトル：' + title;
-      Application.ProcessMessages;
       // ファイル名を準備する
       if FileName = '' then
         FileName := Path + PathFilter(title) + '.txt';
       // 作者名
-      RegEx.Expression := SAUTHER;
-      RegEx.InputString:= MainPage;
-      if RegEx.Exec then
-      begin
-        sp := RegEx.MatchPos[0] + RegEx.MatchLen[0];
-        auther := RegEx.Match[0];
-        // 作者名の前後のタグを除去する
-        auther := ReplaceRegExpr('<div align="right">作者：<span itemprop="author">', auther, '');
-        auther := ReplaceRegExpr('</span></div>', auther, '');
-        UTF8Delete(MainPage, 1, sp - 1);
-        RegEx.InputString := auther;
-        RegEx.Expression  := '<a href=.*?>';
-        if RegEx.Exec then
-        begin
-          authurl := RegEx.Match[0];
-          authurl := ReplaceRegExpr('<a href="', authurl, '');
-          authurl := ReplaceRegExpr('">', authurl, '');
-          auther := ReplaceRegExpr('<.*?>', auther, '');
-        end;
-        auther := ProcTags(auther);
-      end else begin
-        RegEx.Expression := SAUTHER2;
-        RegEx.InputString:= MainPage;
-        if RegEx.Exec then
-        begin
-          sp := RegEx.MatchPos[0] + RegEx.MatchLen[0];
-          auther := RegEx.Match[0];
-          // 作者名の前後のタグを除去する
-          auther := ReplaceRegExpr('<div align="right">作者：<span itemprop="author">', auther, '');
-          auther := ReplaceRegExpr('</span></div>', auther, '');
-          UTF8Delete(MainPage, 1, sp - 1);
-          RegEx.InputString := auther;
-          RegEx.Expression  := '<a href=.*?>';
-          if RegEx.Exec then
-          begin
-            authurl := RegEx.Match[0];
-            authurl := ReplaceRegExpr('<a href="', authurl, '');
-            authurl := ReplaceRegExpr('">', authurl, '');
-            auther := ReplaceRegExpr('<.*?>', auther, '');
-          end;
-          auther := ProcTags(auther);
-        end;
+      auther := shp.FindRegex('<span itemprop="author"><a href=.*?>', '</a></span>');
+      if auther = '' then
+        auther := shp.FindRegex('<span itemprop="author">', '</span>')
+      else begin// 作者URLあり
+        authurl := shp.FindRegex('<span itemprop="author"><a href="', '">.*?</a></span>');
+        if authurl <> '' then
+          authurl := 'https:' + authurl;
       end;
-      // 前書き部分
-      RegEx.Expression := SHEADER;
-      RegEx.InputString:= MainPage;
-      if RegEx.Exec then
-      begin
-        sp := RegEx.MatchPos[0] + RegEx.MatchLen[0];
-        header := RegEx.Match[0];
-        // 前書きの前後のタグを除去する
-        header := ReplaceRegExpr('<div class="ss">', header, '');
-        header := ReplaceRegExpr('<hr.*?></div>', header, '');
-        header := ProcTags(header);
-        UTF8Delete(MainPage, 1, sp - 1);
-      end;
-      // 目次部分
-      pn := 1;
-      RegEx.Expression := SCONTENT;
-      RegEx.InputString:= MainPage;
-      if RegEx.Exec then
-      begin
-        cont := RegEx.Match[0];
-        // 作者名の前後のタグを除去する
-        cont := ReplaceRegExpr('<div class="ss">', cont, '');
-        cont := ReplaceRegExpr('</div>', cont, '');
-      end;
-      // 目次を取り出す
-      aurl := URL.Text;
-      if aurl[UTF8Length(aurl)] = '/' then
-        UTF8Delete(aurl, UTF8Length(aurl), 1);
-      while True do
-      begin
-        RegEx.Expression := SSECTION;
-        RegEx.InputString:= cont;
-        // ここでは目次ああるかどうかだけをチェックして各話URLを簡易的に登録していく
-        if RegEx.Exec then
-        begin
-          sc := RegEx.MatchPos[0];
-          sl := RegEx.MatchLen[0];
-          PageList.Add(aurl + '/' + IntToStr(pn) + '.html');
-          Inc(pn);
-          UTF8Delete(cont, 1, sc + sl - 1);
-        end else
-          Break;
-      end;
-      TextPage.Add(title);
-      TextPage.Add(auther);
-      TextPage.Add(AO_PB2);
-      TextPage.Add(AO_KKL + URL.Text + #13#10 + header + #13#10 + AO_KKR);
-      TextPage.Add(AO_PB2);
+      // 前書き
+      header := shp.FindRegex('</div><div class="ss">', '<hr style="margin:20px 0px;"></div>');
+      //目次
+      for i := 1 to PageN do
+        PageList.Add(aurl + '/' + IntToStr(i) + '.html');
 
-      LogFile.Add(URL.Text);
-      LogFile.Add('タイトル：' + title);
-      if authurl <> '' then
-        LogFile.Add('作者　　：' + auther + '(https:' + authurl + ')')
-      else
-        LogFile.Add('作者　　：' + auther);
-      LogFile.Add('あらすじ：');
-      LogFile.Add(header);
-      LogFile.Add('');
+      if PageN = 0 then
+        Status.Caption := 'トップページから情報を取得出来ませんでした.'
+      else begin
+        TextPage.Add(title);
+        TextPage.Add(auther);
+        TextPage.Add(AO_PB2);
+        TextPage.Add(AO_KKL + #13#10 + URL.Text + #13#10 + header + #13#10 + AO_KKR + #13#10);
+        TextPage.Add(AO_PB2);
 
-      // Naro2mobiから呼び出された場合は進捗状況をSendする
-      if hWnd <> 0 then
-      begin
-        sendstr := title + ',' + auther;
-        // 送信する文字列をUTF-16にする
-        ws := UTF8ToUTF16(sendstr);
-        Cds.dwData := PageList.Count - StartN + 1;
-        Cds.cbData := ByteLength(ws) + 2;
-        Cds.lpData := PWideChar(ws);
-        SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
-        Application.ProcessMessages;
+        LogFile.Add(URL.Text);
+        LogFile.Add('タイトル：' + title);
+        if authurl <> '' then
+          LogFile.Add('作者  ：' + auther + '(https:' + authurl + ')')
+        else
+          LogFile.Add('作者  ：' + auther);
+        LogFile.Add('あらすじ：');
+        LogFile.Add(header);
+        LogFile.Add('');
+
+        // Naro2mobiから呼び出された場合は進捗状況をSendする
+        if hWnd <> 0 then
+        begin
+          sendstr := title + ',' + auther;
+          // 送信する文字列をUTF-16にする
+          ws := UTF8ToUTF16(sendstr);
+          Cds.dwData := PageList.Count - StartN + 1;
+          Cds.cbData := ByteLength(ws) + 2;
+          Cds.lpData := PWideChar(ws);
+          SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
+          Application.ProcessMessages;
+        end;
       end;
-    end else
-      Status.Caption := 'トップページから情報を取得出来ませんでした.';
+    finally
+     shp.Free;
+    end;
   end;
 end;
 
 // 小説の連載状況をチェックする
 function THameln.GetNovelStatus(MainPage: string): string;
 var
-  str: string;
+  str, pns: string;
 begin
   Result := '';
   if MainPage <> '' then
@@ -922,7 +637,7 @@ begin
       str := RegEx.Match[0];
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
-      str := LoadFromHTML('https:' + str);
+      str := GetHTML('https:' + str);
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
@@ -931,6 +646,19 @@ begin
         Result := '【連載中】'
       else if UTF8Pos('短編', str) > 0 then
         Result := '【短編】';
+      // 作品話数
+      RegEx.InputString := str;
+      RegEx.Expression  := '<td class="label">話数</td><td.*?>.*? \d{1,5}話</td>';
+      if RegEx.Exec then
+      begin
+        pns := RegEx.Match[0];
+        pns := ReplaceRegExpr('話</td>', ReplaceRegExpr('<td class="label">話数</td><td.*?>.*? ', pns, ''), '');
+        try
+          PageN := StrToInt(pns);
+        except
+          PageN := 0;
+        end;
+      end;
     end;
   end;
 end;
@@ -1151,7 +879,7 @@ begin
   PrevURL := '';  // エピソードページを取得出来たか判定するために前後ページのURLを用いる
   NextURL := '';
   // トップページ情報を取得する
-  TextBuff := LoadFromHTML(URL.Text);
+  TextBuff := GetHTML(URL.Text);
   if TextBuff <> '' then
   begin
     NvStat := GetNovelStatus(TextBuff);
@@ -1311,7 +1039,7 @@ var
 begin
   if aHTML <> '' then
   begin
-    src := aHTML;
+    src := string(aHTML);
 
     if not Done then
     begin
