@@ -9,19 +9,15 @@ Windows10/11上で動作します。
 
 ### 実行ファイルの作り方
 
-Lazarus (3.0以降)のプロジェクトを開くからhamelndlw.lpiを開いてビルドしてください。
-
-尚、ビルドするためにはTRegExprとWebView4Delphiが必要です。
-
-TRegExprは https://github.com/andgineer/TRegExpr から取得してください。その上でsrcフォルダー内のregexpr.pas、regexpr_compilers.inc、regexpr_unicodedata.pasの3つのファイルをkakuyomudlプロジェクトソースファイルと同じフォルダにコピーして下さい。
-
-WebView4Delphiは https://github.com/salvadordf/WebView4Delphi から取得して、パッケージファイル(.lpk)を開くからインストールして下さい。
-
+Lazarus (3.0以降)のプロジェクトを開くからhamelndlw.lpiを開いてビルドしてください。<br>
+尚、ビルドするためにはTRegExprとWebView4Delphi、ShimpleHTMLParserが必要です。<br>
++ TRegExprは https://github.com/andgineer/TRegExpr から取得してください。その上でsrcフォルダー内のregexpr.pas、regexpr_compilers.inc、regexpr_unicodedata.pasの3つのファイルをkakuyomudlプロジェクトソースファイルと同じフォルダにコピーして下さい。
++ WebView4Delphiは https://github.com/salvadordf/WebView4Delphi から取得して、パッケージファイル(.lpk)を開くからインストールして下さい。
++ ShimpleHTMLParserはhttps://github.com/minouejapan/SimpleHTMLParserから取得して下さい。
 
 #### バージョン情報を編集したい場合
-　verinfow.rcファイルをテキストファイルとして開いて編集してください。尚、編集後は文字コードをShift-JISとして保存する必要があります。
-
-　編集後はコマンドラインから、rc verinfo.rcを実行すればバージョン情報リソースファイルverinfo.resが作成されます。rc.exeはDelphiやVisual Studioをインストールしていればパスが通たフォルダー内に存在しているはずです。
+　verinfow.rcファイルをテキストファイルとして開いて編集してください。尚、編集後は文字コードをShift-JISとして保存する必要があります。<br>
+　編集後はコマンドラインから、rc verinfo.rcを実行すればバージョン情報リソースファイルverinfo.resが作成されます。rc.exeはDelphiやVisual Studioをインストールしていればパスが通たフォルダー内に存在しているはずです。<br>
 
 
 ### 使い方
@@ -47,13 +43,10 @@ WebView4Delphiは https://github.com/salvadordf/WebView4Delphi から取得し�
 
 
 ### 禁止事項
-1.hamelndlを用いてWeb小説サイトからダウンロードしたテキストファイルの第三者への販売や不特定多数への配信。 
-
-2.ダウンロードしたオリジナル作品を著作者の了解なく加工（文章の流用や作品の翻訳等）しての再公開。 
-
-3.その他、著作者の権利を踏みにじるような行為。 
-
-4.ソースコード中のSleep(1000)を削除または数値を小さくしてダウンロードを高速化し、ダウンロード時にhamelnサーバーに負荷をかける行為。
+1. hamelndlを用いてWeb小説サイトからダウンロードしたテキストファイルの第三者への販売や不特定多数への配信。 
+2. ダウンロードしたオリジナル作品を著作者の了解なく加工（文章の流用や作品の翻訳等）しての再公開。 
+3. その他、著作者の権利を踏みにじるような行為。 
+4. ソースコード中のSleep(1000)を削除または数値を小さくしてダウンロードを高速化し、ダウンロード時にhamelnサーバーに負荷をかける行為。
 
 
 ### ライセンス
