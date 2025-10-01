@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.1 2025/10/01  短編の処理がおかしかった不具合を修正した
   2.0 2025/09/27  HTML構文解析を力技からSHParser(SimpleHTMLParser)による解析に変更した
                   本文の一部を取得出来ない場合があった不具合を修正した
                   前書き・後書きにある脚注を取得出来ていなかった不具合を修正した
@@ -434,6 +435,7 @@ begin
       // サーバーへの負担を減らすため1秒のインターバルを入れる
       Sleep(500);   // Sleep処理を削除したり、この数値を小さくすることを禁止します
     end;
+    Application.ProcessMessages;
     Inc(i);
     Inc(n);
   end;
@@ -447,14 +449,17 @@ var
   htmlsrc, sendstr, sshead, sect,
   body, header, footer: string;
   ws: WideString;
+  fl: TFoundList;
 begin
   htmlsrc := Page;
-  // 検索速度を上げるため<body>～</body>部分だけを切り出す
-  RegEx.InputString := Page;
-  RegEx.Expression  := '<body[\s\S]*?</body>';
-  if RegEx.Exec then
-    htmlsrc := RegEx.Match[0];
-  htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+  // HTMLソースから必要な部分だけを切り出す
+  shp := TSHParser.Create(Page);
+  try
+    htmlsrc := shp.Find('div', 'class', 'ss', False);
+    htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+  finally
+    shp.Free;
+  end;
   title := ''; auther := ''; authurl := '';
   body := ''; sshead := ''; header := ''; footer := ''; sect := '';
   shp := TSHParser.Create(htmlsrc);
@@ -473,9 +478,9 @@ begin
     if authurl <> '' then
       authurl := 'https:' + authurl;
     // 短編前書き
-    sshead := shp.Find('div', 'class', 'ss');
+    sshead := shp.FindRegex('<div class="ss">', '<hr style="margin:20px 0px;">');
     // 話タイトル
-    sect := shp.Find('span', 'style', 'font-size:120%');
+    sect := shp.FindRegEx('/ \d{1,6}</div>[\s\S]*?<span style="font-size:120%">', '</span>');
     // 本文
     body   := shp.Find('div', 'id', 'honbun');
     // 前書き
@@ -504,7 +509,7 @@ begin
   TextPage.Add(AO_PB2);
   if sshead <> '' then
   begin
-    TextPage.Add(AO_KKL + #13#10 + URL.Text + #13#10 + sshead + #13#10 + AO_KKR + #13#10);
+    TextPage.Add(AO_KKL + #13#10 + sshead + #13#10 + AO_KKR + #13#10);
     TextPage.Add(AO_PB2);
   end;
   TextPage.Add(AO_SEB + sect + AO_SEE);
@@ -589,7 +594,7 @@ begin
         TextPage.Add(title);
         TextPage.Add(auther);
         TextPage.Add(AO_PB2);
-        TextPage.Add(AO_KKL + #13#10 + URL.Text + #13#10 + header + #13#10 + AO_KKR + #13#10);
+        TextPage.Add(AO_KKL + #13#10 + header + #13#10 + AO_KKR + #13#10);
         TextPage.Add(AO_PB2);
 
         LogFile.Add(URL.Text);
@@ -637,7 +642,7 @@ begin
       str := RegEx.Match[0];
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
-      str := GetHTML('https:' + str);
+      str := GetHTML('https:' + str, 'over18', 'off');
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
@@ -879,7 +884,7 @@ begin
   PrevURL := '';  // エピソードページを取得出来たか判定するために前後ページのURLを用いる
   NextURL := '';
   // トップページ情報を取得する
-  TextBuff := GetHTML(URL.Text);
+  TextBuff := GetHTML(URL.Text, 'over18', 'off');
   if TextBuff <> '' then
   begin
     NvStat := GetNovelStatus(TextBuff);

@@ -1,6 +1,6 @@
 1 VERSIONINFO
-FILEVERSION 2,0,0,0
-PRODUCTVERSION 2,0,0,0
+FILEVERSION 2,1,0,0
+PRODUCTVERSION 2,1,100
 FILEOS 0x4
 FILETYPE 0x1
 {
@@ -11,11 +11,11 @@ BLOCK "StringFileInfo"
     VALUE "Comments", "フリーソフトです"
     VALUE "CompanyName", ""
     VALUE "FileDescription", "ハーメルンテキストダウンローダー"
-		VALUE "FileVersion", "2.0.0.0"
+		VALUE "FileVersion", "2.1.0.0"
 		VALUE "LegalCopyright", "INOUE, masahiro"
 		VALUE "OriginalFilename", "hamelndlw.exe"
 		VALUE "ProductName", "ハーメルンテキストダウンローダー"
-		VALUE "ProductVersion", "2.0"
+		VALUE "ProductVersion", "2.1"
 	}
 }
 
