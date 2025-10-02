@@ -1,7 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  2.1 2025/10/01  短編の処理がおかしかった不具合を修正した
+  2.11 2025/10/02  短編の処理を旧来のものに戻した
   2.0 2025/09/27  HTML構文解析を力技からSHParser(SimpleHTMLParser)による解析に変更した
                   本文の一部を取得出来ない場合があった不具合を修正した
                   前書き・後書きにある脚注を取得出来ていなかった不具合を修正した
@@ -145,7 +145,7 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver2.0 2025/9/26';
+  VERSION  = 'ver2.11 2025/10/2';
   NVSITE   = 'https://syosetu.org';
 
 // ユーザメッセージID
@@ -296,7 +296,7 @@ end;
 // 小説本文をHTMLから抜き出して整形する
 function THameln.ParsePage(Page: string): Boolean;
 var
-  sp, mp, ml: integer;
+  sp: integer;
   header, footer, chapt, sect, body, htmlsrc: string;
   shp: TSHParser;
 begin
@@ -444,53 +444,65 @@ end;
 // 短編専用処理
 procedure THameln.ParseShort(Page: string);
 var
-  shp: TSHParser;
   title, auther, authurl,
-  htmlsrc, sendstr, sshead, sect,
+  sendstr, sshead, sect,
   body, header, footer: string;
   ws: WideString;
-  fl: TFoundList;
 begin
-  htmlsrc := Page;
-  // HTMLソースから必要な部分だけを切り出す
-  shp := TSHParser.Create(Page);
-  try
-    htmlsrc := shp.Find('div', 'class', 'ss', False);
-    htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
-  finally
-    shp.Free;
-  end;
   title := ''; auther := ''; authurl := '';
-  body := ''; sshead := ''; header := ''; footer := ''; sect := '';
-  shp := TSHParser.Create(htmlsrc);
-  try
-    // hameln専用変換フィルタを登録する
-    shp.OnBeforeGetText:= @ProcTags;
-    // タイトル
-    title := '【短編】' + shp.FindRegex('<span .*?><a href=.*?>', '</a></span>');
-     // ファイル名を準備する
+  // タイトル
+  RegEx.Expression  := '<span .*?><a href=\./>.*?</a></span>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    title := RegEx.Match[0];
+    title := ReplaceRegExpr('<span .*?><a href=\./>', title, '');
+    title := ReplaceRegExpr('</a></span>', title, '');
+    title := ReplaceRegExpr('《', title, '【');
+    title := ReplaceRegExpr('》', title, '】');
+    title := ProcTags('【短編】' + title);
+    // ファイル名を準備する
     NvTitle.Caption := '作品タイトル：' + title;
     if FileName = '' then
       FileName := Path + PathFilter(title) + '.txt';
-    // 作者
-    auther := shp.FindRegex('作：<a href=.*?>', '</a>');
-    authurl := shp.FindRegex('作：<a href="', '">.*?</a>');
-    if authurl <> '' then
-      authurl := 'https:' + authurl;
-    // 短編前書き
-    sshead := shp.FindRegex('<div class="ss">', '<hr style="margin:20px 0px;">');
-    // 話タイトル
-    sect := shp.FindRegEx('/ \d{1,6}</div>[\s\S]*?<span style="font-size:120%">', '</span>');
-    // 本文
-    body   := shp.Find('div', 'id', 'honbun');
-    // 前書き
-    header := shp.FindRegex('<div id="maegaki">', '<div id="maegaki_open">');
-    // 後書き
-    footer := shp.FindRegex('<div id="atogaki">', '<div id="atogaki_open">');
-   finally
-    shp.Free;
   end;
-
+  // 作者・作者URL
+  RegEx.Expression  := '作：<a href=".*?">.*?</a>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    auther := RegEx.Match[0];
+    authurl:= auther;
+    auther := ReplaceRegExpr('作：<a href=".*?">', auther, '');
+    auther := ReplaceRegExpr('</a>', auther, '');
+    auther := ProcTags(auther);
+    authurl:= ReplaceRegExpr('作：<a href="', authurl, '');
+    authurl:= ReplaceRegExpr('">.*?</a>', authurl, '');
+    if authurl <> '' then
+      authurl:= 'https:' + authurl;
+  end;
+  // 短編の前書き
+  header := '';
+  RegEx.Expression  := '</div>'#13#10'<div class="ss">.*?<hr';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    sshead := RegEx.Match[0];
+    sshead := ReplaceRegExpr('</div>'#13#10'<div class="ss">', sshead, '');
+    sshead := ReplaceRegExpr('<hr', sshead, '');
+    sshead := ProcTags(sshead);
+  end;
+  // 通常の前書き
+  header := '';
+  RegEx.Expression  := '<div id="maegaki">.*?</div>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    header := RegEx.Match[0];
+    header := ReplaceRegExpr('<div id="maegaki">', header, '');
+    header := ReplaceRegExpr('</divc>', header, '');
+    header := ProcTags(header);
+  end;
   // Naro2mobiから呼び出された場合は進捗状況をSendする
   if hWnd <> 0 then
   begin
@@ -504,30 +516,68 @@ begin
     Application.ProcessMessages;
   end;
 
+  // 話タイトル
+  sect := '';
+  RegEx.Expression  := '<span style="font-size:120%"> .*?</span>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    sect := RegEx.Match[0];
+    sect := ReplaceRegExpr('<span style="font-size:120%">', sect, '');
+    sect := ReplaceRegExpr('</span>', sect, '');
+    sect := ProcTags(Trim(sect));
+  end;
+  // 本文
+  body := '';
+  RegEx.Expression  := '<div id="honbun">.*?</div>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    body := RegEx.Match[0];
+    body := ReplaceRegExpr('<div id="honbun">', body, '');
+    body := ReplaceRegExpr('</div>', body, '');
+    body := ReplaceRegExpr('<div id="honbun">', body, '');
+    body := ReplaceRegExpr('</div>', body, '');
+    body := ChangeAozoraTag(body);
+    body := ReplaceRegExpr('<p id=".*?">', body, '');  // 各行を整形
+    body := ReplaceRegExpr('</p>', body, #13#10);
+    body := ProcTags(body);
+  end;
+  // 後書き
+  footer := '';
+  RegEx.Expression  := '<div id="atogaki">.*?><br>.*?</div>';
+  RegEx.InputString := Page;
+  if RegEx.Exec then
+  begin
+    footer := RegEx.Match[0];
+    footer := ReplaceRegExpr('<div id="atogaki">', footer, '');
+    footer := ReplaceRegExpr('</div>', footer, '');
+    footer := ProcTags(footer);
+  end;
   TextPage.Add(title);
   TextPage.Add(auther);
   TextPage.Add(AO_PB2);
   if sshead <> '' then
   begin
-    TextPage.Add(AO_KKL + #13#10 + sshead + #13#10 + AO_KKR + #13#10);
+    TextPage.Add(AO_KKL + #13#10 +  ReplaceRegExpr('<br>', sshead, #13#10) + #13#10 + AO_KKR);
     TextPage.Add(AO_PB2);
   end;
   TextPage.Add(AO_SEB + sect + AO_SEE);
   if HEADER <> '' then
-    TextPage.Add(AO_KKL + #13#10 + HEADER + #13#10 + AO_KKR + #13#10);
+    TextPage.Add(AO_KKL + HEADER + #13#10 + AO_KKR);
   TextPage.Add(body);
   if footer <> '' then
-    TextPage.Add(AO_KKL + #13#10 + footer + #13#10 + AO_KKR + #13#10);
+    TextPage.Add(AO_KKL + #13#10 + ReplaceRegExpr('<br>', footer, #13#10) + #13#10 + AO_KKR);
   TextPage.Add(AO_PB2);
 
   LogFile.Add(URL.Text);
   LogFile.Add('タイトル：' + title);
   if authurl <> '' then
-    LogFile.Add('作者　　：' + auther + '(https:' + authurl + ')')
+    LogFile.Add('作者  ：' + auther + '(https:' + authurl + ')')
   else
     LogFile.Add('作者  ：' + auther);
   LogFile.Add('あらすじ：');
-  LogFile.Add(header);
+  LogFile.Add(ReplaceRegExpr('<br>', sshead, #13#10));
   LogFile.Add('');
 end;
 
