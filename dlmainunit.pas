@@ -1,6 +1,10 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.3 2025/03/10  トップページ情報取得をWinINetから各ページ取得と同じEdgeBrowserで取得するようにした
+                  各話タイトルに","があるとページ取得エラーとなる不具合を修正した
+                  トップページ取得の判定を修正した
+                  クッキーを毎回初期化してR18用クッキーを再度設定するようにした
   2.23 2026/01/22 SimpleHTMLParserにメモリアクセス違反対応の修正を加えたためver2.23として再ビルドした
   2.22 2026/01/21 SimpleHTMLParserにメモリアクセス違反対応の修正を加えたためver2.22として再ビルドした
   2.21 2026/01/20 SimpleHTMLParserにメモリアクセス違反対応の修正を加えたためver2.21として再ビルドした
@@ -65,7 +69,7 @@ uses
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Buttons,
   Lazutf8wrap,
 {$ENDIF}
-  RegExpr, SHParser, UniHTML,
+  RegExpr, SHParser, UniHtml,
   uWVBrowserBase, uWVBrowser,uWVWindowParent, uWVTypes, uWVTypeLibrary, uWVLoader;
 
 type
@@ -153,7 +157,7 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver2.11 2025/10/2';
+  VERSION  = 'ver2.30 2026/3/10';
   NVSITE   = 'https://syosetu.org';
 
 // ユーザメッセージID
@@ -362,7 +366,7 @@ end;
 procedure THameln.LoadEachPage;
 var
   i, n, cnt, sc, rt: integer;
-  line, stat, einfo, schapt, stitle, surl: string;
+  line, stat, einfo, schapt, stitle, surl, tmp: string;
   einfol: TStringList;
 begin
   cnt := PageList.Count;
@@ -374,15 +378,18 @@ begin
   sc := cnt - i;
   einfol := TStringList.Create;
   einfol.StrictDelimiter := True;
-  einfol.Delimiter := ',';
+  einfol.Delimiter := #9;
   try
     // 最初のアクセスが空振りするのでダミでーアクセスしておく
-    einfol.CommaText := PageList.Strings[0];
+    tmp := PageList.Strings[0];
+    //einfol.CommaText := tmp;
+    einfol.DelimitedText := tmp;
     surl := einfol.strings[0];
     line := GetHTMLSrc(surl, 0);
     while i < cnt do
     begin
-      einfol.CommaText := PageList.Strings[i];
+      tmp := PageList.Strings[i];
+      einfol.DelimitedText := tmp;
       schapt := einfol.Strings[0];
       stitle := einfol.Strings[1];
       surl   := einfol.Strings[2];
@@ -447,6 +454,8 @@ begin
       Application.ProcessMessages;
       Inc(i);
       Inc(n);
+      if Cancel then
+        Break;
     end;
 	finally
     einfol.Free;
@@ -655,6 +664,8 @@ begin
       begin
         eblock := ReplaceRegExpr('width=.*?>', eblock, '');
         eblock := ReplaceRegExpr('</tr>', eblock, '</tr>'#13#10); // TStringListに代入するため</tr>毎に','を入れる
+        eblock := ReplaceRegExpr('"', eblock, '');
+        eblock := ReplaceRegExpr('<tbody >', eblock, '');
         einfol := TStringList.Create;
         try
           einfol.Text := eblock;
@@ -675,14 +686,17 @@ begin
 					  if Pos('<span id=', etmp) > 0 then
             begin
               stitle := shp.GetMaskedContent(etmp, '<tr.*?<a href=.*?>', '</a>.*?</tr>');
+              stitle := UTF8StringReplace(stitle, #9, ' ', [rfReplaceAll]);// ないはずだがタブ文字があれば半角スペースに置換する
               surl   := aurl + shp.GetMaskedContent(etmp, '<tr.*?<a href=\.', 'style=.*?</tr>');
-              einfo  := einfo + ',' + ChangeRuby(stitle) + ',' + ChangeRuby(surl);
+              // 各話タイトルに','が含まれているとリストをうまく分離できなくなるためセパレータに#9を使用する
+              einfo  := einfo + #9 + ChangeRuby(stitle) + #9 + ChangeRuby(surl);
               PageList.Add(einfo);
               Inc(i);
               if i = icnt then
                 Break;
               etmp := einfol.Strings[i];
-					  end;
+					  end else
+              Break;
 				  end;
 			  finally
           einfol.Free;
@@ -798,7 +812,7 @@ begin
       str := RegEx.Match[0];
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
-      str := GetHTML('https:' + str, 'over18', 'off');
+      str := GetHTML('https:' + str, 'over18', 'yes');
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
@@ -886,6 +900,9 @@ begin
   SaveName  := '';
   hWnd      := 0;
 
+  // PageListのデリミタをタブ文字にする
+  PageList.StrictDelimiter := True;
+  PageList.Delimiter := #9;
   // 保存されたパラメータを読み込む(IniFilesを用いるほどではないので原始的な方法で)
   // Turbo PASCAL時代に戻った感じ
   cfg := ChangeFileExt(Application.ExeName, '.cfg');
@@ -1013,10 +1030,12 @@ begin
 end;
 
 procedure THameln.StartBtnClick(Sender: TObject);
+var
+  cookie: ICoreWebView2Cookie;
 label
   Quit;
 begin
-  if UTF8Pos('https://', URL.Text) = 0 then
+  if UTF8Pos('https://syosetu.org/novel/', URL.Text) <> 1 then
   begin
     Status.Caption := '状態：URLをセットしてください.';
     Exit;
@@ -1039,8 +1058,14 @@ begin
     FileName := '';
   PrevURL := '';  // エピソードページを取得出来たか判定するために前後ページのURLを用いる
   NextURL := '';
+  // クッキーを設定する
+  WV2.DeleteAllCookies; // 全削除
+  cookie := WV2.CreateCookie('over18', 'off', 'syosetu.org', '/'); // over18= no
+  cookie.Set_IsHttpOnly(-1);//HttpOnlyフラグ設定
+  cookie.Set_IsSecure(-1);//Secureフラグ設定
+  WV2.AddOrUpdateCookie(cookie);
   // トップページ情報を取得する
-  TextBuff := GetHTML(URL.Text, 'over18', 'off');
+  TextBuff := GetHTMLSrc(URL.Text, 1);
   if TextBuff <> '' then
   begin
     NvStat := GetNovelStatus(TextBuff);
@@ -1220,14 +1245,22 @@ begin
           TextBuff := src;
           Done := True;
         end;
-      end else begin
-        if Pos('</script></body></html>', src) = 0 then
+      end else if WVMode = 1 then
+      begin
+        if Pos('<tbody><tr', src) = 0 then
           WV2.ExecuteScript('encodeURI(document.documentElement.outerHTML)')
         else begin
           TextBuff := src;
           Done := True;
         end;
-    end;
+      end else begin
+          if Pos('<tbody><tr><td ', src) = 0 then
+            WV2.ExecuteScript('encodeURI(document.documentElement.outerHTML)')
+          else begin
+            TextBuff := src;
+            Done := True;
+          end;
+      end;
     end;
   end else begin
     SetActiveWindow(Handle);

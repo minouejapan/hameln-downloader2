@@ -16,7 +16,7 @@ object Hameln: THameln
   Font.Pitch = fpVariable
   Font.Quality = fqDraft
   KeyPreview = True
-  LCLVersion = '4.4.0.0'
+  LCLVersion = '4.6.0.0'
   OnActivate = FormActivate
   OnClose = FormClose
   OnCloseQuery = FormCloseQuery
@@ -104,7 +104,7 @@ object Hameln: THameln
       Left = 424
       Height = 19
       Top = 80
-      Width = 143
+      Width = 142
       Caption = '話ごとにファイルを分割する'
       TabOrder = 3
     end

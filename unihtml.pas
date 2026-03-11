@@ -35,12 +35,14 @@ var
 begin
   Result   := '';
   if (CookieName <> '') and (CookieData <> '') then
+  begin
 {$IFDEF FPC}
     InternetSetCookie(PAnsiChar(AURL), PAnsiChar(CookieName), PAnsiChar(CookieData));
 {$ELSE}
     InternetSetCookieW(PWideChar(AURL), PWideChar(CookieName), PWideChar(CookieData));
 {$ENDIF}
-  hSession := InternetOpen(PChar(UA), INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
+	end;
+	hSession := InternetOpen(PChar(UA), INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
   if Assigned(hSession) then
   begin
     InternetSetOption(hSession, INTERNET_OPTION_USER_AGENT, PChar(ua), Length(ua));
