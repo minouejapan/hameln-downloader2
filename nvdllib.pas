@@ -197,7 +197,7 @@ end;
 // 2)&#x????; → 通常の文字
 function Restore2RealChar(Base: string): string;
 var
-  tmp, cd: string;
+  tmp, cd, rcd: string;
   w, mp, ml: integer;
   ch: Char;
   wch: WideChar;
@@ -245,8 +245,8 @@ begin
     if r.Exec then
     begin
       repeat
-        UTF8Delete(tmp, r.MatchPos[0], r.MatchLen[0]);
         cd := r.Match[0];
+        rcd := '\' + cd;
         UTF8Delete(cd, 1, 2);   // \uを削除する
         UTF8Insert('$', cd, 1); // 先頭に16進数接頭文字$を追加する
         try
@@ -255,7 +255,7 @@ begin
         except
           wch := '？';
         end;
-        UTF8Insert(UTF16ToUTF8(wch), tmp, r.MatchPos[0]);
+        tmp := ReplaceRegExpr(rcd, tmp, wch);
       until not r.ExecNext;
     end;
   finally
