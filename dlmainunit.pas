@@ -1,7 +1,10 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  2.3 2025/03/10  トップページ情報取得をWinINetから各ページ取得と同じEdgeBrowserで取得するようにした
+  2.4 2026/03/23  Windows10上から正常にダウンロード出来なかった不具合を修正した(WinINetでのHTML取得
+                  を全て廃止した)
+                  開発環境をLazarus限定とした
+  2.3 2026/03/10  トップページ情報取得をWinINetから各ページ取得と同じEdgeBrowserで取得するようにした
                   各話タイトルに","があるとページ取得エラーとなる不具合を修正した
                   トップページ取得の判定を修正した
                   クッキーを毎回初期化してR18用クッキーを再度設定するようにした
@@ -53,23 +56,14 @@
 
 unit dlmainunit;
 
-{$IFDEF FPC}
-  {$MODE Delphi}
-  {$CODEPAGE utf8}
-{$ENDIF}
+{$MODE Delphi}
+{$CODEPAGE utf8}
 
 interface
 
 uses
-{$IFDEF FPC}
-  Windows, Messages, SysUtils, Classes, Graphics,
-  Controls, Forms, Dialogs, ExtCtrls, StdCtrls, Buttons, LazUTF8,
-{$ELSE}
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Buttons,
-  Lazutf8wrap,
-{$ENDIF}
-  RegExpr, SHParser, UniHtml,
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
+  ExtCtrls, StdCtrls, Buttons, LazUTF8, RegExpr, SHParser,
   uWVBrowserBase, uWVBrowser,uWVWindowParent, uWVTypes, uWVTypeLibrary, uWVLoader;
 
 type
@@ -143,11 +137,7 @@ var
 
 implementation
 
-{$IFDEF FPC}
-  {$R *.lfm}
-{$ELSE}
-  {$R *.lfm}
-{$ENDIF}
+{$R *.lfm}
 {$R verinfow.res}
 
 { THameln }
@@ -157,7 +147,7 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver2.30 2026/3/10';
+  VERSION  = 'ver2.40 2026/3/23';
   NVSITE   = 'https://syosetu.org';
 
 // ユーザメッセージID
@@ -329,7 +319,6 @@ begin
   htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
   body := ''; header := ''; footer := ''; chapt := ''; sect := '';
   shp := TSHParser.Create(htmlsrc);
-  //MessageBoxW(Handle, PWideChar('ノード: ' + IntToStr(shp.NodeComp)), '', 0);
   try
     // hameln専用変換フィルタを登録する
     shp.OnBeforeGetText:= @ProcTags;
@@ -382,7 +371,6 @@ begin
   try
     // 最初のアクセスが空振りするのでダミでーアクセスしておく
     tmp := PageList.Strings[0];
-    //einfol.CommaText := tmp;
     einfol.DelimitedText := tmp;
     surl := einfol.strings[0];
     line := GetHTMLSrc(surl, 0);
@@ -812,7 +800,8 @@ begin
       str := RegEx.Match[0];
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
-      str := GetHTML('https:' + str, 'over18', 'yes');
+      //str := GetHTML('https:' + str, 'over18', 'yes');
+      str := GetHTMLSrc('https:' + str, 2);
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
@@ -1032,6 +1021,7 @@ end;
 procedure THameln.StartBtnClick(Sender: TObject);
 var
   cookie: ICoreWebView2Cookie;
+  htmlsrc: string;
 label
   Quit;
 begin
@@ -1061,15 +1051,16 @@ begin
   // クッキーを設定する
   WV2.DeleteAllCookies; // 全削除
   cookie := WV2.CreateCookie('over18', 'off', 'syosetu.org', '/'); // over18= no
-  cookie.Set_IsHttpOnly(-1);//HttpOnlyフラグ設定
-  cookie.Set_IsSecure(-1);//Secureフラグ設定
+  //cookie.Set_IsHttpOnly(-1);//HttpOnlyフラグ設定
+  //cookie.Set_IsSecure(-1);//Secureフラグ設定
   WV2.AddOrUpdateCookie(cookie);
   // トップページ情報を取得する
   TextBuff := GetHTMLSrc(URL.Text, 1);
   if TextBuff <> '' then
   begin
+    htmlsrc := TextBuff;
     NvStat := GetNovelStatus(TextBuff);
-    ParseChapter(TextBuff);
+    ParseChapter(htmlsrc);
   end;
   if (TextBuff = '') or ((PageList.Count = 0) and (not NShort)) then
   begin
@@ -1237,6 +1228,7 @@ begin
 
     if not Done then
     begin
+      // トップページ
       if WVMode = 0 then
       begin
         if Pos('var script3 = document.createElement( ''script'' );', src) = 0 then
@@ -1245,7 +1237,17 @@ begin
           TextBuff := src;
           Done := True;
         end;
+      // 各話ページ
       end else if WVMode = 1 then
+      begin
+        if (Pos('<tbody><tr', src) = 0) and (Pos('<div class="ss">', src) = 0) then
+          WV2.ExecuteScript('encodeURI(document.documentElement.outerHTML)')
+        else begin
+          TextBuff := src;
+          Done := True;
+        end;
+      // 小説情報ページ
+      end else if WVMode = 2 then
       begin
         if Pos('<tbody><tr', src) = 0 then
           WV2.ExecuteScript('encodeURI(document.documentElement.outerHTML)')
