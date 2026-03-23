@@ -5,13 +5,13 @@
 
 
 ### 動作環境
-Windows10/11上で動作します。
+Windows10/11上で動作します(Windows11を推奨)。
 
 ### 実行ファイルの作り方
 
 Lazarus (3.0以降)のプロジェクトを開くからhamelndlw.lpiを開いてビルドしてください。<br>
 尚、ビルドするためにはTRegExprとWebView4Delphi、ShimpleHTMLParserが必要です。<br>
-+ TRegExprは https://github.com/andgineer/TRegExpr から取得してください。その上でsrcフォルダー内のregexpr.pas、regexpr_compilers.inc、regexpr_unicodedata.pasの3つのファイルをkakuyomudlプロジェクトソースファイルと同じフォルダにコピーして下さい。
++ TRegExprは https://github.com/andgineer/TRegExpr から取得してください。その上でsrcフォルダー内のregexpr.pas、regexpr_compilers.inc、regexpr_unicodedata.pasの3つのファイルをライブラリパスが通ったフォルダもしくはhamelndlwプロジェクトソースファイルと同じフォルダにコピーして下さい。
 + WebView4Delphiは https://github.com/salvadordf/WebView4Delphi から取得して、パッケージファイル(.lpk)を開くからインストールして下さい。
 + ShimpleHTMLParserはhttps://github.com/minouejapan/SimpleHTMLParserから取得して下さい。
 
