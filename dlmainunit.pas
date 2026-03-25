@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.5 2026/03/25  1話短編をダウンロード出来なかった不具合を修正した
+                  ダウンロードインターバルを追加出来るようにした
   2.4 2026/03/23  Windows10上から正常にダウンロード出来なかった不具合を修正した(WinINetでのHTML取得
                   を全て廃止した)
                   開発環境をLazarus限定とした
@@ -63,13 +65,15 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
-  ExtCtrls, StdCtrls, Buttons, LazUTF8, RegExpr, SHParser,
+  ExtCtrls, StdCtrls, Buttons, Spin, LazUTF8, RegExpr, SHParser,
   uWVBrowserBase, uWVBrowser,uWVWindowParent, uWVTypes, uWVTypeLibrary, uWVLoader;
 
 type
   { THameln }
   THameln = class(TForm)
+				Label2: TLabel;
     Panel1: TPanel;
+		Interval: TSpinEdit;
     WV2: TWVBrowser;
     Timer1: TTimer;
     Panel2: TPanel;
@@ -88,6 +92,7 @@ type
     procedure FormCreate(Sender: TObject);
     procedure FormKeyPress(Sender: TObject; var Key: char);
     procedure FormShow(Sender: TObject);
+		procedure IntervalChange(Sender: TObject);
     procedure StartBtnClick(Sender: TObject);
     procedure WV2AfterCreated(Sender: TObject);
     procedure WV2ExecuteScriptCompleted(Sender: TObject;
@@ -123,7 +128,7 @@ type
     WVMode, PageN: integer;
     function ParsePage(Page: string): Boolean;
     procedure LoadEachPage;
-    procedure ParseShort(Page: string);
+    function ParseShort(Page: string): Boolean;
     procedure ParseChapter(MainPage:string);
     procedure SaveSeparateFiles;
     function GetNovelStatus(MainPage: string): string;
@@ -168,7 +173,8 @@ var
   RegEx: TRegExpr;
   hWnd: THandle;
   CDS: TCopyDataStruct;
-  StartN: integer;
+  StartN,
+  IntMSec: integer;
 
 
 // HTML内のJavaScript実行が完了したことを判定する
@@ -437,7 +443,7 @@ begin
         if Cancel then
           Break;
         // サーバーへの負担を減らすため1秒のインターバルを入れる
-        Sleep(500);   // Sleep処理を削除したり、この数値を小さくすることを禁止します
+        Sleep(500 + IntMSec);  // 0.5秒+インターバル設定値： Sleep処理を削除したり、この数値を小さくすることを禁止します
       end;
       Application.ProcessMessages;
       Inc(i);
@@ -451,22 +457,29 @@ begin
 end;
 
 // 短編専用処理
-procedure THameln.ParseShort(Page: string);
+function THameln.ParseShort(Page: string): Boolean;
 var
-  title, auther, authurl,
+  title, author, authurl,
   sendstr, sshead, sect,
-  body, header, footer: string;
+  body, header, footer, htmlsrc: string;
   ws: WideString;
+  shp: TSHParser;
 begin
-  title := ''; auther := ''; authurl := '';
-  // タイトル
-  RegEx.Expression  := '<span .*?><a href=\./>.*?</a></span>';
+  Result := False;
   RegEx.InputString := Page;
+  RegEx.Expression  := '<body[\s\S]*?</body>';
   if RegEx.Exec then
-  begin
-    title := RegEx.Match[0];
-    title := ReplaceRegExpr('<span .*?><a href=\./>', title, '');
-    title := ReplaceRegExpr('</a></span>', title, '');
+    htmlsrc := RegEx.Match[0]
+  else begin
+    Exit;
+  end;
+  htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
+  shp := TSHParser.Create(htmlsrc);
+  try
+    // hameln専用変換フィルタを登録する
+    shp.OnBeforeGetText:= @ProcTags;
+    // タイトル
+    title := shp.Find('a', 'href', './');
     title := ReplaceRegExpr('《', title, '【');
     title := ReplaceRegExpr('》', title, '】');
     title := ProcTags('【短編】' + title);
@@ -474,120 +487,64 @@ begin
     NvTitle.Caption := '作品タイトル：' + title;
     if FileName = '' then
       FileName := Path + PathFilter(title) + '.txt';
-  end;
-  // 作者・作者URL
-  RegEx.Expression  := '作：<a href=".*?">.*?</a>';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    auther := RegEx.Match[0];
-    authurl:= auther;
-    auther := ReplaceRegExpr('作：<a href=".*?">', auther, '');
-    auther := ReplaceRegExpr('</a>', auther, '');
-    auther := ProcTags(auther);
-    authurl:= ReplaceRegExpr('作：<a href="', authurl, '');
-    authurl:= ReplaceRegExpr('">.*?</a>', authurl, '');
+    // 作者
+    author := shp.FindRegex('作：<a.*?>', '</a>');
+    authurl := shp.FindRegex('作：<a href="', '">');
     if authurl <> '' then
-      authurl:= 'https:' + authurl;
-  end;
-  // 短編の前書き
-  header := '';
-  RegEx.Expression  := '</div>'#13#10'<div class="ss">.*?<hr';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    sshead := RegEx.Match[0];
-    sshead := ReplaceRegExpr('</div>'#13#10'<div class="ss">', sshead, '');
-    sshead := ReplaceRegExpr('<hr', sshead, '');
-    sshead := ProcTags(sshead);
-  end;
-  // 通常の前書き
-  header := '';
-  RegEx.Expression  := '<div id="maegaki">.*?</div>';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    header := RegEx.Match[0];
-    header := ReplaceRegExpr('<div id="maegaki">', header, '');
-    header := ReplaceRegExpr('</divc>', header, '');
-    header := ProcTags(header);
-  end;
-  // Naro2mobiから呼び出された場合は進捗状況をSendする
-  if hWnd <> 0 then
-  begin
-    sendstr := title + ',' + auther;
-    // 送信する文字列をUTF-16にする
-    ws := UTF8ToUTF16(sendstr);
-    Cds.dwData := PageList.Count - StartN + 1;
-    Cds.cbData := ByteLength(ws) + 2;
-    Cds.lpData := PWideChar(ws);
-    SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
-    Application.ProcessMessages;
-  end;
-
-  // 話タイトル
-  sect := '';
-  RegEx.Expression  := '<span style="font-size:120%"> .*?</span>';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    sect := RegEx.Match[0];
-    sect := ReplaceRegExpr('<span style="font-size:120%">', sect, '');
-    sect := ReplaceRegExpr('</span>', sect, '');
-    sect := ProcTags(Trim(sect));
-  end;
-  // 本文
-  body := '';
-  RegEx.Expression  := '<div id="honbun">.*?</div>';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    body := RegEx.Match[0];
-    body := ReplaceRegExpr('<div id="honbun">', body, '');
-    body := ReplaceRegExpr('</div>', body, '');
-    body := ReplaceRegExpr('<div id="honbun">', body, '');
-    body := ReplaceRegExpr('</div>', body, '');
-    body := ChangeAozoraTag(body);
-    body := ReplaceRegExpr('<p id=".*?">', body, '');  // 各行を整形
-    body := ReplaceRegExpr('</p>', body, #13#10);
-    body := ProcTags(body);
-  end;
-  // 後書き
-  footer := '';
-  RegEx.Expression  := '<div id="atogaki">.*?><br>.*?</div>';
-  RegEx.InputString := Page;
-  if RegEx.Exec then
-  begin
-    footer := RegEx.Match[0];
-    footer := ReplaceRegExpr('<div id="atogaki">', footer, '');
-    footer := ReplaceRegExpr('</div>', footer, '');
-    footer := ProcTags(footer);
-  end;
-  TextPage.Add(title);
-  TextPage.Add(auther);
-  TextPage.Add(AO_PB2);
-  if sshead <> '' then
-  begin
-    TextPage.Add(AO_KKL + #13#10 +  ReplaceRegExpr('<br>', sshead, #13#10) + #13#10 + AO_KKR);
+      authurl := 'https:' + authurl;
+    // Naro2mobiから呼び出された場合は進捗状況をSendする
+    if hWnd <> 0 then
+    begin
+      sendstr := title + ',' + author;
+      // 送信する文字列をUTF-16にする
+      ws := UTF8ToUTF16(sendstr);
+      Cds.dwData := PageList.Count - StartN + 1;
+      Cds.cbData := ByteLength(ws) + 2;
+      Cds.lpData := PWideChar(ws);
+      SendMessage(hWnd, WM_COPYDATA, Handle, LPARAM(Addr(Cds)));
+      Application.ProcessMessages;
+    end;
+    // 短編の前書き
+    sshead := shp.FindRegex('<hr style="margin:20px 0px;"></div>.*?<div class="ss">', '<hr');
+    // 通常の前書き
+    header := shp.Find('div', 'id', 'maegaki');
+    // 本文のタイトル
+    sect := shp.FindRegex('<span style="font-size:120%">', '</span>');
+    // 本文
+    body := shp.Find('div', 'id', 'honbun');
+    // 後書き
+    footer := shp.Find('div', 'id', 'atogaki');
+    // 保存処理+
+    TextPage.Add(title);
+    TextPage.Add(author);
     TextPage.Add(AO_PB2);
-  end;
-  TextPage.Add(AO_SEB + sect + AO_SEE);
-  if HEADER <> '' then
-    TextPage.Add(AO_KKL + HEADER + #13#10 + AO_KKR);
-  TextPage.Add(body);
-  if footer <> '' then
-    TextPage.Add(AO_KKL + #13#10 + ReplaceRegExpr('<br>', footer, #13#10) + #13#10 + AO_KKR);
-  TextPage.Add(AO_PB2);
+    if sshead <> '' then
+    begin
+      TextPage.Add(AO_KKL + #13#10 +  ReplaceRegExpr('<br>', sshead, #13#10) + #13#10 + AO_KKR);
+      TextPage.Add(AO_PB2);
+    end;
+    if sect <> '' then
+      TextPage.Add(AO_SEB + sect + AO_SEE);
+    if header <> '' then
+      TextPage.Add(AO_KKL + HEADER + #13#10 + AO_KKR);
+    TextPage.Add(body);
+    if footer <> '' then
+      TextPage.Add(AO_KKL + #13#10 + ReplaceRegExpr('<br>', footer, #13#10) + #13#10 + AO_KKR);
+    TextPage.Add(AO_PB2);
 
-  LogFile.Add(URL.Text);
-  LogFile.Add('タイトル：' + title);
-  if authurl <> '' then
-    LogFile.Add('作者  ：' + auther + '(https:' + authurl + ')')
-  else
-    LogFile.Add('作者  ：' + auther);
-  LogFile.Add('あらすじ：');
-  LogFile.Add(ReplaceRegExpr('<br>', sshead, #13#10));
-  LogFile.Add('');
+    LogFile.Add(URL.Text);
+    LogFile.Add('タイトル：' + title);
+    if authurl <> '' then
+      LogFile.Add('作者  ：' + author + '(https:' + authurl + ')')
+    else
+      LogFile.Add('作者  ：' + author);
+    LogFile.Add('あらすじ：');
+    LogFile.Add(ReplaceRegExpr('<br>', sshead, #13#10));
+    LogFile.Add('');
+    Result := True;
+  finally
+    shp.Free;
+  end;
 end;
 
 // トップページからタイトル、作者、前書き、各話情報を取り出す
@@ -595,14 +552,14 @@ procedure THameln.ParseChapter(MainPage: string);
 var
   shp: TSHParser;
   i, icnt: integer;
-  htmlsrc, title, auther, authurl,
+  htmlsrc, title, author, authurl,
   header, sendstr, aurl,
   eblock, einfo, etmp,
   stitle, surl: string;
   einfol: TStringList;
   ws: WideString;
 begin
-  title := ''; auther := ''; authurl := ''; header := '';
+  title := ''; author := ''; authurl := ''; header := '';
   aurl := URL.Text;
   if aurl[UTF8Length(aurl)] = '/' then
     UTF8Delete(aurl, UTF8Length(aurl), 1);
@@ -636,9 +593,9 @@ begin
       if FileName = '' then
         FileName := Path + PathFilter(title) + '.txt';
       // 作者名
-      auther := shp.FindRegex('<span itemprop="author"><a href=.*?>', '</a></span>');
-      if auther = '' then
-        auther := shp.FindRegex('<span itemprop="author">', '</span>')
+      author := shp.FindRegex('<span itemprop="author"><a href=.*?>', '</a></span>');
+      if author = '' then
+        author := shp.FindRegex('<span itemprop="author">', '</span>')
       else begin// 作者URLあり
         authurl := shp.FindRegex('<span itemprop="author"><a href="', '">.*?</a></span>');
         if authurl <> '' then
@@ -694,7 +651,7 @@ begin
         Status.Caption := 'トップページから情報を取得出来ませんでした.'
       else begin
         TextPage.Add(title);
-        TextPage.Add(auther);
+        TextPage.Add(author);
         TextPage.Add(AO_PB2);
         TextPage.Add(AO_KKL + #13#10 + header + #13#10 + AO_KKR + #13#10);
         TextPage.Add(AO_PB2);
@@ -702,16 +659,16 @@ begin
         LogFile.Add(URL.Text);
         LogFile.Add('タイトル：' + title);
         if authurl <> '' then
-          LogFile.Add('作者  ：' + auther + '(https:' + authurl + ')')
+          LogFile.Add('作者  ：' + author + '(https:' + authurl + ')')
         else
-          LogFile.Add('作者  ：' + auther);
+          LogFile.Add('作者  ：' + author);
         LogFile.Add('あらすじ：');
         LogFile.Add(header);
         LogFile.Add('');
         // Naro2mobiから呼び出された場合は進捗状況をSendする
         if hWnd <> 0 then
         begin
-          sendstr := title + ',' + auther;
+          sendstr := title + ',' + author;
           // 送信する文字列をUTF-16にする
           ws := UTF8ToUTF16(sendstr);
           Cds.dwData := PageList.Count - StartN + 1;
@@ -913,7 +870,13 @@ begin
         if Opt = '' then
           Opt := '200';
         Top := StrToInt(Opt);
-      end;
+        Readln(f, Opt);
+        if Opt <> '' then
+          try
+            Interval.Value := StrToInt(Opt);
+					except;
+					end;
+			end;
     finally
       CloseFile(f);
     end;
@@ -997,6 +960,11 @@ begin
     Timer1.Enabled := True;
 end;
 
+procedure THameln.IntervalChange(Sender: TObject);
+begin
+  IntMSec := Interval.Value * 1000;
+end;
+
 procedure THameln.OCBtnClick(Sender: TObject);
 begin
   // 閉じた状態であればブラウザを開く
@@ -1077,13 +1045,18 @@ begin
       LoadEachPage;
     // 短編を保存する
     end else begin
-      TextPage.WriteBOM := True;      // DelphiとLazarusでデフォルトの定義が違うため明示的に指定する
-      LogFile.WriteBOM  := True;
-      TextPage.SaveToFile(Filename, TEncoding.UTF8);
-      LogFile.SaveToFile(ChangeFileExt(FileName, '.log'), TEncoding.UTF8);
-      Status.Caption := Status.Caption + '・・完了';
+      if (FileName <> '') and (TextPage.Count > 2) then
+      begin
+        TextPage.WriteBOM := True;      // DelphiとLazarusでデフォルトの定義が違うため明示的に指定する
+        LogFile.WriteBOM  := True;
+        TextPage.SaveToFile(Filename, TEncoding.UTF8);
+        LogFile.SaveToFile(ChangeFileExt(FileName, '.log'), TEncoding.UTF8);
+        Status.Caption := Status.Caption + '・・完了';
+      end else begin
+        Status.Caption := '小説情報を取得できませんでした.';
+      end;
       Goto Quit;
-    end;
+		end;
     if FileName <> '' then
     begin
       try
@@ -1159,6 +1132,8 @@ begin
         opt := IntToStr(Top)
       else
         opt := '200';
+      Writeln(f, opt);
+      opt := IntToStr(Interval.Value);
       Writeln(f, opt);
     end else begin
       opt := '300';

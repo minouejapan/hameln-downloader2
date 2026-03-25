@@ -103,7 +103,7 @@ object Hameln: THameln
     object SeparateCheck: TCheckBox
       Left = 424
       Height = 19
-      Top = 80
+      Top = 78
       Width = 142
       Caption = '話ごとにファイルを分割する'
       TabOrder = 3
@@ -133,6 +133,22 @@ object Hameln: THameln
       Top = 29
       Width = 599
       TabOrder = 2
+    end
+    object Label2: TLabel
+      Left = 580
+      Height = 15
+      Top = 80
+      Width = 99
+      Caption = '追加インターバル(秒)'
+    end
+    object Interval: TSpinEdit
+      Left = 688
+      Height = 23
+      Top = 76
+      Width = 42
+      MaxValue = 60
+      TabOrder = 4
+      OnChange = IntervalChange
     end
   end
   object WV2: TWVBrowser
