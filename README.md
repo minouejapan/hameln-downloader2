@@ -25,22 +25,6 @@ Lazarus (3.0以降)のプロジェクトを開くからhamelndlw.lpiを開いて
 ![hamelndlw](https://github.com/user-attachments/assets/bfb6ce3e-51d8-42e6-a69d-fc21af4c8880)
 
 
-尚、R18作品をダウンロードするためにはハーメルンサイトへのCookie登録が必要です。
-
-対象URLを入力して、hamelndlwウィンドウ右下の▼をクリックすると対象ページが表示されます。
-![hamelndlw2](https://github.com/user-attachments/assets/8ac832a7-e30d-4bda-858d-4729fab3aef4)
-
-
-あなたは18歳以上ですか？の質問に対して「はい」をクリックすると対象作品のトップページが開かれますので、hamelndlwウィンドウ右下の▲をクリックしてページを閉じます。
-
-![hamelndlw1](https://github.com/user-attachments/assets/724d3340-0b28-4d75-a7d0-650d7d84c87f)
-
-
-その後ダウンロードボタンをクリックすれば対象作品のダウンロードが始まります。
-
-尚、この一度設定したCookieは保存されますので、次回以降はこの作業は不要となります（一定期間経過後にCookieがリセットされてR18作品がダウンロード出来なくなった場合は再度Cookieをセットし直してください）。
-
-
 
 ### 禁止事項
 1. hamelndlを用いてWeb小説サイトからダウンロードしたテキストファイルの第三者への販売や不特定多数への配信。 
