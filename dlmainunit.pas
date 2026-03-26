@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.51 2026/03/26 外部ダウンローダーとして引数付きで呼ばれた場合に設定したインターバルが反映され
+                  なかった不具合を修正した
   2.5 2026/03/25  1話短編をダウンロード出来なかった不具合を修正した
                   ダウンロードインターバルを追加出来るようにした
   2.4 2026/03/23  Windows10上から正常にダウンロード出来なかった不具合を修正した(WinINetでのHTML取得
@@ -831,7 +833,7 @@ procedure THameln.FormCreate(Sender: TObject);
 var
   cfg, opt, op, ver: string;
   f: TextFile;
-  i: integer;
+  i, l, t, it: integer;
 begin
   WVCreated := False;
   Done      := False;
@@ -860,23 +862,32 @@ begin
       Readln(f, opt);
       if opt = '' then
         opt := '1';
-      if ParamCount = 0 then
-      begin
-        Readln(f, Opt);
-        if Opt = '' then
-          Opt := '300';
-        Left := StrToInt(Opt);
-        Readln(f, Opt);
-        if Opt = '' then
-          Opt := '200';
-        Top := StrToInt(Opt);
-        Readln(f, Opt);
-        if Opt <> '' then
-          try
-            Interval.Value := StrToInt(Opt);
-					except;
-					end;
+      Readln(f, opt); // Left
+      try
+        l := StrToInt(opt);
+      except
+        l := 300;
 			end;
+      Readln(f, opt); // Top
+      try
+        t := StrToInt(opt);
+      except
+        t := 200;
+			end;
+      Readln(f, opt); // Interval time
+      try
+        it := StrToInt(opt);
+      except
+        it := 0;
+			end;
+			if ParamCount = 0 then
+      begin
+        Left := l;
+        Top := t;
+      end;
+      Interval.Value := it;
+      IntMSec := it * 1000;
+      //MessageBox(Handle, PChar(IntToStr(it)), 'debug', 0);
     finally
       CloseFile(f);
     end;
@@ -1139,6 +1150,8 @@ begin
       opt := '300';
       Writeln(f, opt);
       opt := '200';
+      Writeln(f, opt);
+      opt := IntToStr(Interval.Value);
       Writeln(f, opt);
     end;
   finally
