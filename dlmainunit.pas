@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.6 2026/04/07  見出しの前後に空白が含まれているとページURLを取得できない場合があった不具合を修正した
+                  各話htmlソースに<body>タグが複数ある場合に本文取得エラーとなる不具合を修正した
   2.51 2026/03/26 外部ダウンローダーとして引数付きで呼ばれた場合に設定したインターバルが反映され
                   なかった不具合を修正した
   2.5 2026/03/25  1話短編をダウンロード出来なかった不具合を修正した
@@ -321,7 +323,7 @@ begin
   htmlsrc := Page;
   // 検索速度を上げるため<body>～</body>部分だけを切り出す
   RegEx.InputString := Page;
-  RegEx.Expression  := '<body[\s\S]*?</body>';
+  RegEx.Expression  := '<body style[\s\S]*?</body>';
   if RegEx.Exec then
     htmlsrc := RegEx.Match[0];
   htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
@@ -636,7 +638,7 @@ begin
               stitle := UTF8StringReplace(stitle, #9, ' ', [rfReplaceAll]);// ないはずだがタブ文字があれば半角スペースに置換する
               surl   := aurl + shp.GetMaskedContent(etmp, '<tr.*?<a href=\.', 'style=.*?</tr>');
               // 各話タイトルに','が含まれているとリストをうまく分離できなくなるためセパレータに#9を使用する
-              einfo  := einfo + #9 + ChangeRuby(stitle) + #9 + ChangeRuby(surl);
+              einfo  := Trim(einfo) + #9 + ChangeRuby(stitle) + #9 + ChangeRuby(surl);
               PageList.Add(einfo);
               Inc(i);
               if i = icnt then
