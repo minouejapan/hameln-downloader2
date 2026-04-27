@@ -1,6 +1,9 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.7 2026/04/27  あらすじの挿絵処理が抜けていた不具合を修正した
+                  挿絵URLのhttp:をhttps:に置換して保存するようにした
+                  ログファイルの書式をna6dl等と統一した
   2.6 2026/04/07  見出しの前後に空白が含まれているとページURLを取得できない場合があった不具合を修正した
                   各話htmlソースに<body>タグが複数ある場合に本文取得エラーとなる不具合を修正した
   2.51 2026/03/26 外部ダウンローダーとして引数付きで呼ばれた場合に設定したインターバルが反映され
@@ -156,7 +159,7 @@ uses
 
 const
   // バージョン
-  VERSION  = 'ver2.40 2026/3/23';
+  VERSION  = 'ver2.70 2026/4/27';
   NVSITE   = 'https://syosetu.org';
 
 // ユーザメッセージID
@@ -272,6 +275,8 @@ begin
     RegEx.Expression  := '<a href=".{6,60}" alt="挿絵" name=.*?>【挿絵表示】</a>';
     RegEx.InputString := tmp;
   end;
+  // 最後にhttp:をhttps:に置換する
+  tmp := StringReplace(tmp, 'http:', 'https:', [rfReplaceAll]);
   Result := tmp;
 end;
 
@@ -536,13 +541,12 @@ begin
       TextPage.Add(AO_KKL + #13#10 + ReplaceRegExpr('<br>', footer, #13#10) + #13#10 + AO_KKR);
     TextPage.Add(AO_PB2);
 
-    LogFile.Add(URL.Text);
-    LogFile.Add('タイトル：' + title);
+    LogFile.Add('小説URL   :' + URL.Text);
+    LogFile.Add('タイトル  :' + title);
+    LogFile.Add('作者      :' + author);
     if authurl <> '' then
-      LogFile.Add('作者  ：' + author + '(https:' + authurl + ')')
-    else
-      LogFile.Add('作者  ：' + author);
-    LogFile.Add('あらすじ：');
+      LogFile.Add('作者URL   :' + authurl);
+    LogFile.Add('あらすじ  :');
     LogFile.Add(ReplaceRegExpr('<br>', sshead, #13#10));
     LogFile.Add('');
     Result := True;
@@ -587,6 +591,8 @@ begin
 
     shp := TSHParser.Create(htmlsrc);
     try
+      // hameln専用変換フィルタを登録する
+      shp.OnBeforeGetText:= @ProcTags;
       // タイトル名
       title := shp.FindRegex('<span .*?itemprop="name">', '</span>');
       // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
@@ -660,13 +666,12 @@ begin
         TextPage.Add(AO_KKL + #13#10 + header + #13#10 + AO_KKR + #13#10);
         TextPage.Add(AO_PB2);
 
-        LogFile.Add(URL.Text);
-        LogFile.Add('タイトル：' + title);
+        LogFile.Add('小説URL   :' + URL.Text);
+        LogFile.Add('タイトル  :' + title);
+        LogFile.Add('作者      :' + author);
         if authurl <> '' then
-          LogFile.Add('作者  ：' + author + '(https:' + authurl + ')')
-        else
-          LogFile.Add('作者  ：' + author);
-        LogFile.Add('あらすじ：');
+          LogFile.Add('作者URL   :' + authurl);
+        LogFile.Add('あらすじ  :');
         LogFile.Add(header);
         LogFile.Add('');
         // Naro2mobiから呼び出された場合は進捗状況をSendする
