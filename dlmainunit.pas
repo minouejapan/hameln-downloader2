@@ -1,6 +1,9 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.9 2026/05/29  -sオプションが機能していなかった不具合を修正した
+                  最後のページをダウンロードした後にもインターバルが入っていた不具合を修正した
+  2.8 2026/04/29  最後のDLが終わった後にもインターバルを入れていた不具合を修正した
   2.7 2026/04/27  あらすじの挿絵処理が抜けていた不具合を修正した
                   挿絵URLのhttp:をhttps:に置換して保存するようにした
                   ログファイルの書式をna6dl等と統一した
@@ -375,10 +378,13 @@ var
 begin
   cnt := PageList.Count;
   if StartN > 0 then
-    i := StartN - 1
-  else
+  begin
+    i := StartN - 1;
+    n := StartN;
+	end else begin
     i := 0;
-  n := 1;
+  	n := 1;
+	end;
   sc := cnt - i;
   einfol := TStringList.Create;
   einfol.StrictDelimiter := True;
@@ -451,8 +457,9 @@ begin
         end;
         if Cancel then
           Break;
-        // サーバーへの負担を減らすため1秒のインターバルを入れる
-        Sleep(500 + IntMSec);  // 0.5秒+インターバル設定値： Sleep処理を削除したり、この数値を小さくすることを禁止します
+        // サーバーへの負担を減らすため次のDLに移る前に0.5 + 追加インターバル秒のインターバルを入れる
+        if (i + 1) < cnt then
+          Sleep(500 + IntMSec);  // 0.5秒+インターバル設定値： Sleep処理を削除したり、この数値を小さくすることを禁止します
       end;
       Application.ProcessMessages;
       Inc(i);
@@ -485,13 +492,13 @@ begin
   htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
   shp := TSHParser.Create(htmlsrc);
   try
-    // hameln専用変換フィルタを登録する
-    shp.OnBeforeGetText:= @ProcTags;
     // タイトル
     title := shp.Find('a', 'href', './');
     title := ReplaceRegExpr('《', title, '【');
     title := ReplaceRegExpr('》', title, '】');
     title := ProcTags('【短編】' + title);
+    // titileに青空文庫タグが適用されないようにtitleを検索した後でhameln専用変換フィルタを登録する
+    shp.OnBeforeGetText:= @ProcTags;
     // ファイル名を準備する
     NvTitle.Caption := '作品タイトル：' + title;
     if FileName = '' then
@@ -591,10 +598,12 @@ begin
 
     shp := TSHParser.Create(htmlsrc);
     try
-      // hameln専用変換フィルタを登録する
-      shp.OnBeforeGetText:= @ProcTags;
       // タイトル名
       title := shp.FindRegex('<span .*?itemprop="name">', '</span>');
+      title := ReplaceRegExpr('《', title, '【');
+      title := ReplaceRegExpr('》', title, '】');
+      // titileに青空文庫タグが適用されないようにtitleを検索した後でhameln専用変換フィルタを登録する
+      shp.OnBeforeGetText:= @ProcTags;
       // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
       if UTF8Pos('完結', title) = 0 then
         title := NvStat + title;
