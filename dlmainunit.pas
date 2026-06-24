@@ -1,12 +1,13 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
-  2.92 2026/06/20 短編作品に【R18】がつかなかった不具合を修正した
-  2.91 2026/06/17 R-18作品の場合はタイトル名先頭にR-18マークを付与するようにした
-  2.9 2026/05/29  -sオプションが機能していなかった不具合を修正した
+  2.9 2026/06/24  R18作品URLがh.syosetuに変更されたこととトップページの構造が一部変更されたことに対応した
+  2.82 2026/06/20 短編作品に【R18】がつかなかった不具合を修正した
+  2.81 2026/06/17 R-18作品の場合はタイトル名先頭にR-18マークを付与するようにした
+  2.8 2026/05/29  -sオプションが機能していなかった不具合を修正した
                   最後のページをダウンロードした後にもインターバルが入っていた不具合を修正した
-  2.8 2026/04/29  最後のDLが終わった後にもインターバルを入れていた不具合を修正した
-  2.7 2026/04/27  あらすじの挿絵処理が抜けていた不具合を修正した
+  2.7 2026/04/29  最後のDLが終わった後にもインターバルを入れていた不具合を修正した
+  2.7p 2026/04/27 あらすじの挿絵処理が抜けていた不具合を修正した
                   挿絵URLのhttp:をhttps:に置換して保存するようにした
                   ログファイルの書式をna6dl等と統一した
   2.6 2026/04/07  見出しの前後に空白が含まれているとページURLを取得できない場合があった不具合を修正した
@@ -777,7 +778,7 @@ begin
   if MainPage <> '' then
   begin
     // トップページから作品情報ページURLを取得して連載状況を確認する
-    RegEx.Expression  := '<li><a href="//syosetu.org/\?mode=ss_detail&nid=.*?">小説情報</a></li>';
+    RegEx.Expression  := '<li><a href="https://(h.|)syosetu.org/\?mode=ss_detail.*?">小説情報</a></li>'; //'<li><a href="//(h.|)syosetu.org/\?mode=ss_detail&nid=.*?">小説情報</a></li>';
     RegEx.InputString := MainPage;
     if RegEx.Exec then
     begin
@@ -785,7 +786,8 @@ begin
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
       //str := GetHTML('https:' + str, 'over18', 'yes');
-      str := GetHTMLSrc('https:' + str, 2);
+      //str := GetHTMLSrc('https:' + str, 2);
+      str := GetHTMLSrc(str, 2);
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
       else if UTF8Pos('連載(連載中)', str) > 0 then
@@ -1029,7 +1031,8 @@ var
 label
   Quit;
 begin
-  if UTF8Pos('https://syosetu.org/novel/', URL.Text) <> 1 then
+  //if UTF8Pos('https://syosetu.org/novel/', URL.Text) <> 1 then
+  if not ExecRegExpr('https://(h.|)syosetu.org/novel/\d{1,7}(/|)', URL.Text) then
   begin
     Status.Caption := '状態：URLをセットしてください.';
     Exit;
@@ -1054,9 +1057,9 @@ begin
   NextURL := '';
   // クッキーを設定する
   WV2.DeleteAllCookies; // 全削除
-  cookie := WV2.CreateCookie('over18', 'off', 'syosetu.org', '/'); // over18= no
-  //cookie.Set_IsHttpOnly(-1);//HttpOnlyフラグ設定
-  //cookie.Set_IsSecure(-1);//Secureフラグ設定
+  cookie := WV2.CreateCookie('over18', 'off', 'h.syosetu.org', '/'); // over18=off
+  WV2.AddOrUpdateCookie(cookie);
+  cookie := WV2.CreateCookie('over18', 'off', 'syosetu.org', '/'); // over18=off
   WV2.AddOrUpdateCookie(cookie);
   // トップページ情報を取得する
   TextBuff := GetHTMLSrc(URL.Text, 1);
