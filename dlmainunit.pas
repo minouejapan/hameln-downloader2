@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.92 2026/07/20 作者URLのhttps:が重複している不具合を修正した
   2.91 2026/07/20 nvdllib内の数値文字参照コード&#????;のデコード処理を修正した
   2.9 2026/06/24  R18作品URLがh.syosetuに変更されたこととトップページの構造が一部変更されたことに対応した
   2.82 2026/06/20 短編作品に【R18】がつかなかった不具合を修正した
@@ -515,8 +516,11 @@ begin
     author := shp.FindRegex('作：<a.*?>', '</a>');
     authurl := shp.FindRegex('作：<a href="', '">');
     if authurl <> '' then
-      authurl := 'https:' + authurl;
-    // Naro2mobiから呼び出された場合は進捗状況をSendする
+    begin
+      if Pos('https;', authurl) = 0 then
+        authurl := 'https:' + authurl;
+		end;
+		// Naro2mobiから呼び出された場合は進捗状況をSendする
     if hWnd <> 0 then
     begin
       sendstr := title + ',' + author;
@@ -561,7 +565,7 @@ begin
     LogFile.Add('作者      :' + author);
     if authurl <> '' then
       LogFile.Add('作者URL   :' + authurl);
-    LogFile.Add('あらすじ  :');
+		LogFile.Add('あらすじ  :');
     LogFile.Add(ReplaceRegExpr('<br>', sshead, #13#10));
     LogFile.Add('');
     Result := True;
@@ -629,8 +633,11 @@ begin
       else begin// 作者URLあり
         authurl := shp.FindRegex('<span itemprop="author"><a href="', '">.*?</a></span>');
         if authurl <> '' then
+        begin
+          if Pos('https:', authurl) = 0 then
           authurl := 'https:' + authurl;
-      end;
+				end;
+			end;
       // 前書き
       header := shp.FindRegex('</div><div class="ss">', '<hr style="margin:20px 0px;"></div>');
       // 各話の情報を取得してPageListに保存する
