@@ -6,7 +6,7 @@
   せるようにした
   このことによって各ダウンローダーのソースコードがコンパクトになった
 
-
+	1.2  数値文字参照コード&#????;のデコード処理を修正した
 	1.1	 2025/03/03 PathFilterに処理漏れの"<>を追加した
 	1.0  2024/08/19 初版
 
@@ -198,7 +198,7 @@ end;
 function Restore2RealChar(Base: string): string;
 var
   tmp, cd, rcd: string;
-  w, mp, ml: integer;
+  w: integer;
   ch: Char;
   wch: WideChar;
   r: TRegExpr;
@@ -212,30 +212,27 @@ begin
   tmp := UTF8StringReplace(tmp,  '&brvbar;',  '|',  [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '&copy;',    '©',  [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '&amp;',     '&',  [rfReplaceAll]);
-  // &#????;にエンコードされた文字をデコードする(2023/3/19)
+  // &#????;にエンコードされた数値文字参照コードをデコードする(2023/3/19)
   // 正規表現による処理に変更した(2024/3/9)
   r := TRegExpr.Create;
   try
-    r.Expression  := '&#.*?;';
+    r.Expression  := '&#\w.*?;';
     r.InputString := tmp;
     if r.Exec then
     begin
       repeat
         cd := r.Match[0];
-        mp := r.MatchPos[0];
-        ml := r.MatchLen[0];
-        UTF8Delete(tmp, mp, ml);
         UTF8Delete(cd, 1, 2);           // &#を削除する
         UTF8Delete(cd, UTF8Length(cd), 1);  // 最後の;を削除する
         if cd[1] = 'x' then         // 先頭が16進数を表すxであればDelphiの16進数接頭文字$に変更する
           cd[1] := '$';
         try
           w := StrToInt(cd);
-          ch := Char(w);
+          wch := WideChar(w);
         except
-          ch := '?';
+          wch := '?';
         end;
-        UTF8Insert(ch, tmp, mp);
+        tmp := ReplaceRegExpr(r.Match[0], tmp, wch);
         r.InputString := tmp;
       until not r.Exec;
     end;
