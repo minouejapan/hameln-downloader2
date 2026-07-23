@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  2.93 2026/07/24 ver2.92の修正時に短編処理の修正がタイプミスで無効になっていた不具合を修正した
   2.92 2026/07/20 作者URLのhttps:が重複している不具合を修正した
   2.91 2026/07/20 nvdllib内の数値文字参照コード&#????;のデコード処理を修正した
   2.9 2026/06/24  R18作品URLがh.syosetuに変更されたこととトップページの構造が一部変更されたことに対応した
@@ -517,7 +518,7 @@ begin
     authurl := shp.FindRegex('作：<a href="', '">');
     if authurl <> '' then
     begin
-      if Pos('https;', authurl) = 0 then
+      if Pos('https:', authurl) = 0 then
         authurl := 'https:' + authurl;
 		end;
 		// Naro2mobiから呼び出された場合は進捗状況をSendする
