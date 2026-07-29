@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  3.0 2026/07/29  トップページの目次構成が変更されたことに対応した
   2.93 2026/07/24 ver2.92の修正時に短編処理の修正がタイプミスで無効になっていた不具合を修正した
   2.92 2026/07/20 作者URLのhttps:が重複している不具合を修正した
   2.91 2026/07/20 nvdllib内の数値文字参照コード&#????;のデコード処理を修正した
@@ -167,8 +168,6 @@ uses
   nvdllib;
 
 const
-  // バージョン
-  VERSION  = 'ver2.70 2026/4/27';
   NVSITE   = 'https://syosetu.org';
   R18MARK  = '【R-18】';
 
@@ -603,13 +602,18 @@ begin
   end else begin
     // HTMLソースから余分な情報を削除する
     htmlsrc := MainPage;
-    RegEx.InputString:= MainPage;
-    RegEx.Expression := '<body[\s\S]*?</body>';
+    RegEx.InputString := MainPage;
+    RegEx.Expression  := '<body[\s\S]*?</body>';
     if RegEx.Exec then
       htmlsrc := RegEx.Match[0];
     htmlsrc := ReplaceRegExpr('<script[\s\S]*?</script>', htmlsrc, '');
-
-    shp := TSHParser.Create(htmlsrc);
+    // 各話情報ブロックを保存
+    eblock := MainPage;
+    RegEx.InputString := MainPage;
+    RegEx.Expression  := '<section class="episode-list"[\s\S]*?</section>';
+    if RegEx.Exec then
+      eblock := RegEx.Match[0];
+		shp := TSHParser.Create(htmlsrc);
     try
       // タイトル名
       title := shp.FindRegex('<span .*?itemprop="name">', '</span>');
@@ -642,6 +646,7 @@ begin
       // 前書き
       header := shp.FindRegex('</div><div class="ss">', '<hr style="margin:20px 0px;"></div>');
       // 各話の情報を取得してPageListに保存する
+ {
       eblock := shp.Find('table', False);  // <tbody>を切り出す
       if eblock <> '' then
       begin
@@ -685,6 +690,53 @@ begin
           einfol.Free;
 			  end;
       end;
+ }
+      // ver 3.0
+		  if eblock <> '' then
+		  begin
+		    einfol := TStringList.Create;
+		    try
+		      einfol.Text := eblock;
+		      i := 0;
+		      icnt := einfol.Count;
+	        einfo := '';
+		      while i < icnt do
+		      begin
+		        etmp := einfol.Strings[i];
+		        // 章タイトル
+		        if Pos('<li class="episode-list__chapter">', etmp) > 0 then
+		        begin
+		          Inc(i); // 次の行
+  		        etmp := einfol.Strings[i];
+		          einfo := ChangeRuby(shp.GetText(etmp));
+		          Inc(i);
+		          etmp := einfol.Strings[i];
+		 	      end;
+		        // 各話タイトルとURL
+		 		    if Pos('<li class="episode-list__item">', etmp) > 0 then
+		        begin
+		          Inc(i); // 次の行
+  		        etmp := einfol.Strings[i]; // URL
+		          surl := aurl + shp.GetMaskedContent(etmp, '[\s\S]*?<a href="\.', '" class=.*?>');
+		          Inc(i); Inc(i); // 次の行
+  		        etmp := einfol.Strings[i]; // 話タイトル>
+		          stitle := shp.GetText(etmp);
+		          stitle := UTF8StringReplace(stitle, #9, '', [rfReplaceAll]);// ないはずだがタブ文字があれば半角スペースに置換する
+		          // 各話タイトルに','が含まれているとリストをうまく分離できなくなるためセパレータに#9を使用する
+		          einfo  := Trim(einfo) + #9 + ChangeRuby(stitle) + #9 + ChangeRuby(surl);
+		          PageList.Add(einfo);
+  		        einfo := '';
+		          Inc(i);
+		          if i = icnt then
+		            Break;
+		          etmp := einfol.Strings[i];
+		 		    end else
+		          Inc(i);
+		 	    end;
+		    finally
+		      einfol.Free;
+		    end;
+		  end;
       if PageN = 0 then
         Status.Caption := 'トップページから情報を取得出来ませんでした.'
       else begin
