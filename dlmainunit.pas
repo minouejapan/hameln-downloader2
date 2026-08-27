@@ -1,6 +1,7 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  3.01 2026/08/27 SHParser ver1.8で再ビルドした
   3.0 2026/07/29  トップページの目次構成が変更されたことに対応した
   2.93 2026/07/24 ver2.92の修正時に短編処理の修正がタイプミスで無効になっていた不具合を修正した
   2.92 2026/07/20 作者URLのhttps:が重複している不具合を修正した
@@ -646,51 +647,6 @@ begin
       // 前書き
       header := shp.FindRegex('</div><div class="ss">', '<hr style="margin:20px 0px;"></div>');
       // 各話の情報を取得してPageListに保存する
- {
-      eblock := shp.Find('table', False);  // <tbody>を切り出す
-      if eblock <> '' then
-      begin
-        eblock := ReplaceRegExpr('width=.*?>', eblock, '');
-        eblock := ReplaceRegExpr('</tr>', eblock, '</tr>'#13#10); // TStringListに代入するため</tr>毎に','を入れる
-        eblock := ReplaceRegExpr('"', eblock, '');
-        eblock := ReplaceRegExpr('<tbody >', eblock, '');
-        einfol := TStringList.Create;
-        try
-          einfol.Text := eblock;
-          i := 0;
-          icnt := einfol.Count;
-          while i < icnt do
-          begin
-            einfo := '';
-            etmp := einfol.Strings[i];
-            // 章タイトル
-            if Pos('<td colspan=', etmp) > 0 then
-            begin
-              einfo := ChangeRuby(shp.GetText(etmp));
-              Inc(i);
-              etmp := einfol.Strings[i];
-					  end;
-            // 各話タイトルとURL
-					  if Pos('<span id=', etmp) > 0 then
-            begin
-              stitle := shp.GetMaskedContent(etmp, '<tr.*?<a href=.*?>', '</a>.*?</tr>');
-              stitle := UTF8StringReplace(stitle, #9, ' ', [rfReplaceAll]);// ないはずだがタブ文字があれば半角スペースに置換する
-              surl   := aurl + shp.GetMaskedContent(etmp, '<tr.*?<a href=\.', 'style=.*?</tr>');
-              // 各話タイトルに','が含まれているとリストをうまく分離できなくなるためセパレータに#9を使用する
-              einfo  := Trim(einfo) + #9 + ChangeRuby(stitle) + #9 + ChangeRuby(surl);
-              PageList.Add(einfo);
-              Inc(i);
-              if i = icnt then
-                Break;
-              etmp := einfol.Strings[i];
-					  end else
-              Break;
-				  end;
-			  finally
-          einfol.Free;
-			  end;
-      end;
- }
       // ver 3.0
 		  if eblock <> '' then
 		  begin

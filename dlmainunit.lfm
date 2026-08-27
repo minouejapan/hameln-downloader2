@@ -16,7 +16,7 @@ object Hameln: THameln
   Font.Pitch = fpVariable
   Font.Quality = fqDraft
   KeyPreview = True
-  LCLVersion = '4.6.0.0'
+  LCLVersion = '4.8.0.0'
   OnActivate = FormActivate
   OnClose = FormClose
   OnCloseQuery = FormCloseQuery
