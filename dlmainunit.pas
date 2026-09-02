@@ -1,6 +1,8 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  3.02 2026/09/02 nvdllibの&#xxxx;デコード処理の不具合を修正したver1.3で再ビルドした
+                  作者名と作者URLのHTMLタグが変更されて情報を取得出来なくなっていた不具合を修正した
   3.01 2026/08/27 SHParser ver1.8で再ビルドした
   3.0 2026/07/29  トップページの目次構成が変更されたことに対応した
   2.93 2026/07/24 ver2.92の修正時に短編処理の修正がタイプミスで無効になっていた不具合を修正した
@@ -633,11 +635,12 @@ begin
       if FileName = '' then
         FileName := Path + PathFilter(title) + '.txt';
       // 作者名
-      author := shp.FindRegex('<span itemprop="author"><a href=.*?>', '</a></span>');
+      //author := shp.FindRegex('<span itemprop="author"><a href=.*?>', '</a></span>');
+      author := shp.FindRegex('<span itemprop="author".*?><a itemprop="url" href=.*?><span itemprop="name">', '</span></a>');
       if author = '' then
         author := shp.FindRegex('<span itemprop="author">', '</span>')
       else begin// 作者URLあり
-        authurl := shp.FindRegex('<span itemprop="author"><a href="', '">.*?</a></span>');
+        authurl := shp.FindRegex('<span itemprop="author".*?><a itemprop="url" href="', '"><span itemprop="name">.*?</span></a>');
         if authurl <> '' then
         begin
           if Pos('https:', authurl) = 0 then
@@ -802,8 +805,6 @@ begin
       str := RegEx.Match[0];
       str := UTF8StringReplace(str, '<li><a href="', '', [rfReplaceAll]);
       str := UTF8StringReplace(str, '">小説情報</a></li>', '', [rfReplaceAll]);
-      //str := GetHTML('https:' + str, 'over18', 'yes');
-      //str := GetHTMLSrc('https:' + str, 2);
       str := GetHTMLSrc(str, 2);
       if UTF8Pos('連載(完結)', str) > 0 then
         Result := '【完結】'
