@@ -6,8 +6,10 @@
   せるようにした
   このことによって各ダウンローダーのソースコードがコンパクトになった
 
+  1.4  2026/09/15 本文中に<>で囲まれた語句を不要なHTMLタグとして削除しないようOnAfterGetTextに登録する
+                  &lt;と&gt;を<>に戻すためのAfterDecordを追加した
   1.3  2026/09/02 数値文字参照コードデコード用の正規表現パターンがいい加減だったため誤作動する場合があった不具合を修正した
-	1.2  数値文字参照コード&#????;のデコード処理を修正した
+	1.2             数値文字参照コード&#????;のデコード処理を修正した
 	1.1	 2025/03/03 PathFilterに処理漏れの"<>を追加した
 	1.0  2024/08/19 初版
 
@@ -38,6 +40,7 @@ function TrimSpace(Base: string): string;
 function ChangeBRK(Base: string): string;
 function ChangeAozoraTag(Base: string): string;
 function Restore2RealChar(Base: string): string;
+function AfterDecord(Base: string): string;
 function PathFilter(PassName: string): string;
 function GetVersionInfo(const AFileName:string): string;
 
@@ -205,9 +208,7 @@ var
   r: TRegExpr;
 begin
   // エスケープされた文字
-  tmp := UTF8StringReplace(Base, '&lt;',      '<',  [rfReplaceAll]);
-  tmp := UTF8StringReplace(tmp,  '&gt;',      '>',  [rfReplaceAll]);
-  tmp := UTF8StringReplace(tmp,  '&quot;',    '"',  [rfReplaceAll]);
+  tmp := UTF8StringReplace(Base, '&quot;',    '"',  [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '&nbsp;',    ' ',  [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '&yen;',     '\',  [rfReplaceAll]);
   tmp := UTF8StringReplace(tmp,  '&brvbar;',  '|',  [rfReplaceAll]);
@@ -259,6 +260,17 @@ begin
   finally
     r.Free;
   end;
+  Result := tmp;
+end;
+
+// '&lt;'と'&gt;'を'<'と'>'に変換する
+// 余分なHTMLタグを除去する前にこれらをデコードするとHTMLタグとして削除されるためテキスト変換の最後に処理する
+function AfterDecord(Base: string): string;
+var
+  tmp: string;
+begin
+  tmp := UTF8StringReplace(Base, '&lt;',      '<',  [rfReplaceAll]);
+  tmp := UTF8StringReplace(tmp,  '&gt;',      '>',  [rfReplaceAll]);
   Result := tmp;
 end;
 

@@ -1,6 +1,9 @@
 ﻿(*
   ハーメルン小説ダウンローダー
 
+  3.1 2026/11/22  各話ページの前の話と次の話の<< >>がHTMLエンコードされたことに対応した
+                  nvdllibをver1.4に更新した
+  3.03 2026/09/15 本文中に<>で囲まれた語句を不要なHTMLタグとして削除していた不具合を修正した
   3.02 2026/09/02 nvdllibの&#xxxx;デコード処理の不具合を修正したver1.3で再ビルドした
                   作者名と作者URLのHTMLタグが変更されて情報を取得出来なくなっていた不具合を修正した
   3.01 2026/08/27 SHParser ver1.8で再ビルドした
@@ -91,7 +94,7 @@ uses
 type
   { THameln }
   THameln = class(TForm)
-				Label2: TLabel;
+		Label2: TLabel;
     Panel1: TPanel;
 		Interval: TSpinEdit;
     WV2: TWVBrowser;
@@ -348,7 +351,8 @@ begin
   shp := TSHParser.Create(htmlsrc);
   try
     // hameln専用変換フィルタを登録する
-    shp.OnBeforeGetText:= @ProcTags;
+    shp.OnBeforeGetText := @ProcTags;
+    shp.OnAfterGetText  := @AfterDecord;
     // 本文
     body   := shp.Find('div', 'id', 'honbun');
     // 前書き
@@ -422,9 +426,9 @@ begin
       if cnt > 1 then
       begin
 		    if i > 0 then
-		      PrevURL := '<a href="./' + IntToStr(n - 1)  + '.html"><< 前の話</a>';
+		      PrevURL := '<a href="./' + IntToStr(n - 1)  + '.html">&lt;&lt; 前の話</a>';
 		    if i < cnt then
-		      NextURL := '<a href="./' + IntToStr(n + 1) + '.html" class="next_page_link">次の話 >></a>';
+		      NextURL := '<a href="./' + IntToStr(n + 1) + '.html" class="next_page_link">次の話 &gt;&gt;</a>';
 		  end;
 		  line := GetHTMLSrc(surl, 0);
 		  rt := 1;
@@ -507,7 +511,8 @@ begin
     title := ReplaceRegExpr('》', title, '】');
     title := ProcTags('【短編】' + title);
     // titileに青空文庫タグが適用されないようにtitleを検索した後でhameln専用変換フィルタを登録する
-    shp.OnBeforeGetText:= @ProcTags;
+    shp.OnBeforeGetText := @ProcTags;
+    shp.OnAfterGetText  := @AfterDecord;
     // R-18作品であればタイトル名先頭にR-18マークを付与する
     if Pos('※この作品はR-18です。', Page) > 1 then
       title :=  R18MARK + title;
@@ -623,7 +628,8 @@ begin
       title := ReplaceRegExpr('《', title, '【');
       title := ReplaceRegExpr('》', title, '】');
       // titileに青空文庫タグが適用されないようにtitleを検索した後でhameln専用変換フィルタを登録する
-      shp.OnBeforeGetText:= @ProcTags;
+      shp.OnBeforeGetText := @ProcTags;
+      shp.OnAfterGetText  := @AfterDecord;
       // タイトル名に"完結"が含まれていなければ先頭に小説の連載状況を追加する
       if UTF8Pos('完結', title) = 0 then
         title := NvStat + title;
